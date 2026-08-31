@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: notebook_grader_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: grader
+      POSTGRES_PASSWORD: grader_password
+      POSTGRES_DB: notebook_grader
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grader -d notebook_grader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
