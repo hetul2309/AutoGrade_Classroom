@@ -326,7 +326,7 @@ def _build_explanation(
     pct = round(flag.overall_score * 100, 1)
     n = len(flag.matched_cells)
     cell_refs = ", ".join(
-        f"Cell {m.cell_index_a}↔{m.cell_index_b} ({round(m.combined_score*100,1)}%)"
+        f"Cell {m.cell_index_a}<->{m.cell_index_b} ({round(m.combined_score*100,1)}%)"
         for m in flag.matched_cells[:5]   # cap at 5 in the explanation
     )
     suffix = " (and more)" if len(flag.matched_cells) > 5 else ""
