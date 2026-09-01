@@ -7,7 +7,7 @@
 
 ---
 
-## Current Phase: Phase 5 Complete → Ready for Phase 6
+## Current Phase: Phase 6 Complete → Ready for Phase 7 (Admin Frontend)
 
 ## What Exists
 
@@ -31,69 +31,74 @@
   - `Assignment` (id, title, description, rubric_text, max_marks, deadline, created_at)
   - `Submission` (id, student_id, assignment_id, file_path, submitted_at, status [`pending`, `processing`, `graded`, `flagged`, `error`])
   - `Grade` (id, submission_id, marks, max_marks, reasoning_text, flagged, flag_reason, graded_at, manually_edited, edited_by_admin_id, edited_at)
+- `app/auth.py` (Phase 6):
+  - Password hashing with `bcrypt` (`hash_password`, `verify_password`)
+  - JWT creation & verification with `python-jose` (`create_access_token`, `get_current_user`)
+  - Role-based access control (RBAC): `require_role`, `require_admin`, `require_student`
+- `app/schemas.py` (Phase 6):
+  - Pydantic models for auth requests, assignments, submissions, student grade view, admin grades table, manual grade editing, and pipeline triggers
+- `app/main.py` (Phase 6):
+  - FastAPI app with CORS middleware
+  - Endpoints:
+    - `POST /auth/login` — Authenticates user, returns JWT bearer token + role
+    - `GET /auth/me` — Returns currently authenticated user profile
+    - `GET /assignments` — Lists assignments with deadlines and rubrics
+    - `GET /assignments/{id}` — Fetches single assignment details
+    - `POST /submissions/upload` — Student uploads `.ipynb` before deadline, stores file, sets status `pending`
+    - `GET /students/me/grades` — **Strict student isolation**: returns only the authenticated student's grades filtered server-side
+    - `GET /admin/assignments/{id}/grades` — Admin inspects all submissions, grades, and similarity flags
+    - `PATCH /admin/grades/{id}` — Admin manually edits marks/reasoning; records audit trail (`manually_edited=true`, `edited_by_admin_id`)
+    - `POST /admin/assignments/{id}/trigger-grading` — Admin triggers Phase 5 LangGraph grading pipeline
 - `app/notebook_processing.py` (Phase 2):
-  - `process_notebook(path: str) -> NotebookResult`
-  - Token-efficient stripping of `.ipynb` files (removes execution counts, metadata, drops binary plots with placeholders, truncates outputs > 500 chars)
-  - Saves ~43%+ tokens per student notebook
+  - `process_notebook(path: str) -> NotebookResult` (token savings ~43%+)
 - `app/similarity.py` (Phase 3):
-  - `find_similar_pairs(submissions, threshold=0.75) -> list[SimilarityFlag]`
-  - Dual-method plagiarism detection: Token n-gram Jaccard + AST structural Jaccard
-  - Optimized with per-cell feature caching; scales to 150 students (11,175 pairs) in 0.79s
+  - `find_similar_pairs(submissions, threshold=0.75)` (Token n-gram + AST structural Jaccard)
 - `app/grading.py` (Phase 4):
-  - `grade_submission(...) -> GradeResult`
-  - Uses Claude tool use (`submit_grade` schema) for guaranteed structured JSON output
-  - Incorporates pre-computed similarity flags into context
+  - `grade_submission(...) -> GradeResult` (Claude tool use for guaranteed JSON)
 - `app/pipeline.py` (Phase 5):
   - Compiled LangGraph workflow with 7 nodes:
     `preprocess_node` -> `similarity_check_node` -> `build_grading_requests_node` -> `submit_batch_node` -> `poll_batch_node` -> `parse_results_node` -> `persist_results_node`
-  - Full support for Anthropic Message Batches API (batch grading entire assignment in one job)
-  - Supports direct execution & mock client injection for zero-cost rapid testing
-  - Handles per-submission errors cleanly without failing the whole batch
-  - Database persistence: updates submission status to `graded`, `flagged`, or `error`, and inserts/updates `Grade` records
-  - Public entry point: `run_grading_pipeline(assignment_id, client=..., direct_execution=...)`
-- `scripts/`:
-  - `seed.py` — Seeds initial admin user and dummy students/assignments
-  - `demo_grade.py` — End-to-end single submission test with Claude API
-  - `demo_pipeline.py` — End-to-end multi-student batch grading test with Postgres persistence (`uv run python scripts/demo_pipeline.py --mock`)
+  - Anthropic Message Batches API + direct execution support
 - `tests/`:
-  - `tests/test_notebook_processing.py` — 27 tests (all passing)
-  - `tests/test_similarity.py` — 26 tests (all passing)
-  - `tests/test_grading.py` — 25 tests (all passing)
-  - `tests/test_pipeline.py` — 7 tests (all passing)
-  - **Total test suite: 85 passing tests** (`.venv\Scripts\python.exe -m pytest tests/ -v`)
+  - `test_notebook_processing.py` — 27 tests
+  - `test_similarity.py` — 26 tests
+  - `test_grading.py` — 25 tests
+  - `test_pipeline.py` — 7 tests
+  - `test_api.py` — 13 tests
+  - **Total test suite: 98 passing tests** (`.venv\Scripts\python.exe -m pytest tests/ -v`)
 
 ## Key Decisions Made
 - **Package manager**: `uv`
 - **Database**: PostgreSQL 16 via Docker Compose (container: `notebook_grader_db`)
-- **Password Hashing**: Direct `bcrypt` library (avoids passlib incompatibility with Python 3.13)
-- **Plagiarism Engine**: Dual-method Token n-gram + AST structural Jaccard with cell caching (0.79s for 150 students)
-- **LLM Structured Output**: Claude tool-use forced with `tool_choice="any"`
-- **Pipeline Orchestration**: LangGraph `StateGraph` with async execution + Anthropic Message Batches API
+- **Authentication**: JWT tokens signed with HS256, verified in `get_current_user` dependency
+- **Security & Authorization**:
+  - Role-based dependencies (`require_admin`, `require_student`)
+  - Server-side filtering in `GET /students/me/grades` using `current_user.id` so students cannot view any peer grades
+  - Deadline validation enforced on uploads
+- **Pipeline Orchestration**: LangGraph `StateGraph` triggered via `/admin/assignments/{id}/trigger-grading`
 
-## What Phase 6 Should Do (Backend API + Authentication)
-Expose the system via a secure FastAPI application:
-1. **Authentication**:
-   - JWT tokens with `python-jose` + `bcrypt`
-   - `POST /auth/login` (email + password returns access token & role)
-   - Dependency / security utilities: `get_current_user`, `require_role(UserRole.admin)`
-2. **Student Endpoints**:
-   - `POST /submissions/upload` (student uploads `.ipynb` file before assignment deadline)
-   - `GET /students/me/grades` (student views only their own grades, server-side filtered)
-3. **Admin Endpoints**:
-   - `GET /admin/assignments/{id}/grades` (admin views full grades table with student details and similarity flags)
-   - `PATCH /admin/grades/{id}` (admin manually edits marks/reasoning; records `manually_edited=true`, `edited_by_admin_id`, `edited_at`)
-   - `POST /admin/assignments/{id}/trigger-grading` (triggers Phase 5's `run_grading_pipeline(assignment_id)`)
-4. **API Tests**:
-   - Write pytest + httpx tests covering auth, student isolation (cannot access others' grades), admin edits, and pipeline trigger.
+## What Phase 7 Should Do (Admin Frontend)
+Build the admin-facing frontend:
+1. Tech stack: React + Vite + CSS/Tailwind (clean, modern UI).
+2. Login page (email + password -> calls `/auth/login`, stores JWT token).
+3. Assignment list page (shows assignments, deadlines, submission count).
+4. Per-assignment grades table:
+   - Columns: Student Name, Email, Status, Marks, Max Marks, Reasoning, Flagged, Actions
+   - Visual badges for submission status (`pending`, `processing`, `graded`, `flagged`, `error`)
+   - Expandable reasoning preview
+   - Plagiarism highlight if `flagged=true` with flag explanation
+   - Inline/modal editing to call `PATCH /admin/grades/{id}`
+5. "Trigger Grading" button with loading/progress state to invoke `POST /admin/assignments/{id}/trigger-grading`.
 
-## How to Test
-- Run all 85 tests:
+## How to Test Backend API
+- Run the 98 automated tests:
   ```powershell
   cd backend
   .\.venv\Scripts\python.exe -m pytest tests/ -v
   ```
-- Run the full pipeline demo against PostgreSQL:
+- Run the FastAPI server locally:
   ```powershell
   cd backend
-  .\.venv\Scripts\python.exe scripts/demo_pipeline.py --mock
+  .\.venv\Scripts\uvicorn.exe app.main:app --reload --port 8000
   ```
+  Interactive Swagger API documentation will be available at `http://localhost:8000/docs`.
