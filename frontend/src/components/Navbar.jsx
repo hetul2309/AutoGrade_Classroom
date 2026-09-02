@@ -2,7 +2,9 @@ import React from 'react';
 import { BookOpen, LogOut, Shield, User, Sparkles } from 'lucide-react';
 import { clearAuthSession } from '../api';
 
-export default function Navbar({ currentUser, onLogout }) {
+export default function Navbar({ currentUser, activeView, onToggleView, onLogout }) {
+  const isAdmin = currentUser?.role === 'admin';
+
   return (
     <header className="glass-panel" style={{ borderRadius: '0', borderLeft: 'none', borderRight: 'none', borderTop: 'none', position: 'sticky', top: 0, zIndex: 40 }}>
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -25,8 +27,8 @@ export default function Navbar({ currentUser, onLogout }) {
               <span style={{ fontFamily: 'var(--font-heading)', fontSize: '1.2rem', fontWeight: '700', letterSpacing: '-0.02em' }}>
                 AutoGrade <span style={{ color: 'var(--accent-cyan)' }}>ML</span>
               </span>
-              <span className="badge badge-processing" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>
-                <Shield size={10} /> Admin Portal
+              <span className={`badge ${activeView === 'admin' ? 'badge-processing' : 'badge-graded'}`} style={{ fontSize: '0.68rem', padding: '2px 8px' }}>
+                <Shield size={10} /> {activeView === 'admin' ? 'Admin Portal' : 'Student Portal'}
               </span>
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
@@ -36,7 +38,19 @@ export default function Navbar({ currentUser, onLogout }) {
         </div>
 
         {/* User Info & Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {/* Admin Switcher */}
+          {isAdmin && (
+            <button
+              onClick={onToggleView}
+              className="btn-secondary"
+              style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+              title="Toggle between Admin and Student perspective"
+            >
+              {activeView === 'admin' ? 'Preview Student View' : 'Back to Admin View'}
+            </button>
+          )}
+
           {currentUser && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 12px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '999px', border: '1px solid var(--border-subtle)' }}>
               <div style={{

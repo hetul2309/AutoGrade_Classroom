@@ -7,7 +7,7 @@
 
 ---
 
-## Current Phase: Phase 7 Complete → Ready for Phase 8 (Student Frontend)
+## Current Phase: Phase 8 Complete → Ready for Optional Phase 9 (RAG for Rubrics)
 
 ## What Exists
 
@@ -20,37 +20,40 @@
 - `PROJECT_STATE.md` — this file
 
 ### Backend (`backend/`)
-- `pyproject.toml` & `uv.lock`:
-  - Python 3.13.2 managed with `uv`
-  - Core dependencies: `fastapi`, `uvicorn`, `sqlalchemy[asyncio]`, `asyncpg`, `alembic`, `bcrypt`, `python-jose`, `pydantic-settings`, `anthropic`, `nbformat`, `langgraph`
-  - Dev dependencies: `pytest`, `pytest-asyncio`, `httpx`, `pytest-cov`
-- `app/auth.py` — Password hashing (`bcrypt`) + JWT generation (`python-jose`) + RBAC
-- `app/schemas.py` — Pydantic schemas for API requests/responses
+- Python 3.13.2 managed with `uv`
+- Core dependencies: `fastapi`, `uvicorn`, `sqlalchemy[asyncio]`, `asyncpg`, `alembic`, `bcrypt`, `python-jose`, `pydantic-settings`, `anthropic`, `nbformat`, `langgraph`
+- Dev dependencies: `pytest`, `pytest-asyncio`, `httpx`, `pytest-cov`
+- `app/auth.py` — Password hashing (`bcrypt`) + JWT generation (`python-jose`) + RBAC (`require_admin`, `require_student`)
+- `app/schemas.py` — Pydantic schemas for auth, assignments, uploads, student grade views, admin tables, manual editing
 - `app/main.py` — FastAPI application with REST endpoints
-- `app/pipeline.py` — 7-node LangGraph batch grading workflow
+- `app/pipeline.py` — 7-node LangGraph batch grading workflow with Message Batches API
 - `app/grading.py` — Claude tool-use single submission grader
 - `app/similarity.py` — Plagiarism detector (Token n-gram + AST structural Jaccard)
-- `app/notebook_processing.py` — Token-efficient notebook stripper
+- `app/notebook_processing.py` — Token-efficient notebook stripper (~43%+ token savings)
 - **98 automated backend tests passing** across `tests/test_*.py`
 
 ### Frontend (`frontend/`)
 - React 18 + Vite 5 + Lucide Icons:
-  - `vite.config.js` with reverse proxy for `/auth`, `/assignments`, `/submissions`, `/students`, `/admin` to `http://localhost:8000`
-  - `src/index.css` — Modern dark glassmorphic design system (Inter, Outfit, JetBrains Mono Google fonts)
+  - `src/index.css` — Modern dark glassmorphic design system (Inter, Outfit, JetBrains Mono)
   - `src/api.js` — Centralized API client with JWT `localStorage` management and automatic bearer auth
-  - `src/components/Navbar.jsx` — Header with user profile, Admin role badge, and logout
+  - `src/components/Navbar.jsx` — Header with user profile, role badge, student/admin preview switcher, and logout
   - `src/components/Toast.jsx` — Auto-dismissing notification toasts for user actions
   - `src/components/EditGradeModal.jsx` — Modal for TA to adjust marks, edit reasoning, and toggle similarity flags
   - `src/components/SimilarityFlagModal.jsx` — Modal inspecting detailed plagiarism breakdown, similarity percentages, and matched cell pairs
-  - `src/pages/LoginPage.jsx` — Sign in page with quick demo account buttons for Admin TA and Student
-  - `src/pages/AdminDashboard.jsx` — Complete admin control center:
-    - Assignment selector dropdown
-    - Real-time statistics widgets (Total, Graded, Flagged, Average Marks)
+  - `src/pages/LoginPage.jsx` — Sign in page with 1-click **Quick Demo Fill** buttons for Admin TA and Student
+  - `src/pages/AdminDashboard.jsx` — Comprehensive TA control center:
+    - Assignment switcher dropdown
+    - Live statistics widgets (Total Submissions, Graded, Flagged for Plagiarism, Class Average)
     - "Trigger Grading" button with progress spinner and instant direct vs batch API toggle
     - Search & filter bar (search student name/email, filter by status)
     - Interactive grades table with expandable reasoning, status badges, and red plagiarism highlights
-  - `src/App.jsx` & `src/main.jsx` — Root router and mount point
-  - **Build verified**: `npm run build` succeeds with zero errors in ~13s.
+  - `src/pages/StudentPortal.jsx` — Student workspace:
+    - **Assignments & Uploads Tab**: view active assignments, deadlines, expandable grading rubrics, and drag-and-drop `.ipynb` notebook uploader with automatic deadline enforcement
+    - **My Grades & AI Feedback Tab**: **Strict Student Isolation** — displays only the logged-in student's score, percentage progress bar, detailed AI evaluation feedback, and review notices
+  - `src/App.jsx` & `src/main.jsx` — Root router dynamically switching between Admin Dashboard and Student Portal based on user role
+  - **Build verified**: `npm run build` succeeds cleanly with zero errors.
+
+---
 
 ## How to Run Locally
 
@@ -61,7 +64,7 @@
 2. **Start the FastAPI Backend**:
    ```powershell
    cd backend
-   .\.venv\Scripts\uvicorn.exe app.main:app --port 8000
+   .\.venv\Scripts\uvicorn.exe app.main:app --host 127.0.0.1 --port 8000
    ```
 3. **Start the Vite Frontend**:
    ```powershell
@@ -76,9 +79,16 @@
 
 ---
 
-## What Phase 8 Should Do (Student Frontend)
-Build the student-facing portal:
-1. Student views list of assignments with submission deadlines and statuses.
-2. File upload UI for students to submit `.ipynb` files before deadline (`POST /submissions/upload`).
-3. Results page showing **ONLY** the logged-in student's own submission status, awarded marks, and AI feedback (`GET /students/me/grades`).
-4. Prevent any display of peer submissions or grades.
+## Hardening & Production Checklist
+Before deploying for a real university class (e.g. 150+ students):
+1. **File Upload Limits**: Configure max file size (e.g. 15MB limit) in FastAPI using middleware or reverse proxy (Nginx) to prevent DOS.
+2. **Secrets & CORS**: Replace `SECRET_KEY = "change-this-in-production"` and restrict CORS origins from `*` to the deployed frontend domain.
+3. **Cloud Storage**: Transition `file_path` from local disk (`./uploads/`) to S3/GCS bucket storage if deploying on serverless/containers.
+4. **Batch Scheduling**: Set up a cron job or Celery task to trigger `run_grading_pipeline(assignment_id)` 24 hours post-deadline automatically.
+
+---
+
+## Optional Phase 9 — RAG for Multi-Assignment Rubrics (Stretch Goal)
+1. Store rubric chunks and reference solution code in a vector database (`pgvector` on Postgres).
+2. At grading time, retrieve only the rubric sections and reference examples relevant to specific questions or code tasks.
+3. Keep retrieval behind a feature flag so flat rubrics continue to work.

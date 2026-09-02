@@ -113,3 +113,18 @@ export async function triggerGradingApi(assignmentId, direct = false) {
     method: 'POST',
   });
 }
+
+// ── Student APIs ──
+export async function uploadSubmissionApi(assignmentId, file) {
+  const formData = new FormData();
+  formData.append('assignment_id', assignmentId);
+  formData.append('file', file);
+  return apiRequest('/submissions/upload', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export async function getMyGradesApi() {
+  return apiRequest('/students/me/grades');
+}
