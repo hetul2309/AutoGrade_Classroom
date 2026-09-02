@@ -7,6 +7,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/auth': 'http://localhost:8000',
+      '/classes': 'http://localhost:8000',
       '/assignments': 'http://localhost:8000',
       '/submissions': 'http://localhost:8000',
       '/students': 'http://localhost:8000',

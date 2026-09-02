@@ -35,9 +35,47 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ── Class Schemas ─────────────────────────────────────────────────────────────
+
+class ClassCreateRequest(BaseModel):
+    name: str
+    section: str = ""
+    color: str = "linear-gradient(135deg, #4f46e5, #06b6d4)"
+
+
+class ClassJoinRequest(BaseModel):
+    code: str
+
+
+class ClassResponse(BaseModel):
+    id: int
+    name: str
+    section: str
+    code: str
+    color: str
+    teacher_id: int
+    teacher_name: str
+    student_count: int = 0
+    assignment_count: int = 0
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClassMemberResponse(BaseModel):
+    student_id: int
+    name: str
+    email: str
+    role: str
+    enrolled_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ── Assignment Schemas ────────────────────────────────────────────────────────
 
 class AssignmentCreateRequest(BaseModel):
+    class_id: Optional[int] = None
     title: str
     description: str
     rubric_text: str
@@ -47,11 +85,14 @@ class AssignmentCreateRequest(BaseModel):
 
 class AssignmentResponse(BaseModel):
     id: int
+    class_id: Optional[int] = None
     title: str
     description: str
     rubric_text: str
     max_marks: float
     deadline: datetime
+    attachment_name: Optional[str] = None
+    has_attachment: bool = False
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

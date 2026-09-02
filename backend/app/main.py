@@ -15,6 +15,8 @@ Provides endpoints for:
 import logging
 import os
 import shutil
+import string
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -30,7 +32,8 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import desc, select
+from fastapi.responses import FileResponse
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -45,6 +48,8 @@ from app.config import get_settings
 from app.database import get_db
 from app.models import (
     Assignment,
+    Class,
+    ClassEnrollment,
     Grade,
     Student,
     Submission,
@@ -56,6 +61,10 @@ from app.schemas import (
     AdminGradeItem,
     AssignmentCreateRequest,
     AssignmentResponse,
+    ClassCreateRequest,
+    ClassJoinRequest,
+    ClassMemberResponse,
+    ClassResponse,
     GradePatchRequest,
     LoginRequest,
     StudentGradeView,
@@ -133,6 +142,343 @@ async def get_my_profile(current_user: Student = Depends(get_current_user)):
     return current_user
 
 
+# ── Assignment Helper ─────────────────────────────────────────────────────────
+
+def format_assignment_response(a: Assignment) -> AssignmentResponse:
+    has_att = bool(a.attachment_path and os.path.exists(a.attachment_path))
+    return AssignmentResponse(
+        id=a.id,
+        class_id=a.class_id,
+        title=a.title,
+        description=a.description,
+        rubric_text=a.rubric_text,
+        max_marks=a.max_marks,
+        deadline=a.deadline,
+        attachment_name=a.attachment_name,
+        has_attachment=has_att,
+        created_at=a.created_at,
+    )
+
+
+# ── Classes Endpoints (Google Classroom Clone) ────────────────────────────────
+
+@app.get("/classes", response_model=List[ClassResponse], tags=["Classes"])
+async def list_classes(
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """
+    Lists classes for the authenticated user:
+    - If Admin/Teacher: all created classes
+    - If Student: classes enrolled in
+    """
+    if current_user.role == UserRole.admin:
+        stmt = select(Class).order_by(Class.created_at.desc())
+    else:
+        stmt = (
+            select(Class)
+            .join(ClassEnrollment, ClassEnrollment.class_id == Class.id)
+            .where(ClassEnrollment.student_id == current_user.id)
+            .order_by(Class.created_at.desc())
+        )
+
+    res = await session.execute(stmt)
+    classes = res.scalars().all()
+
+    class_responses = []
+    for c in classes:
+        teacher = await session.get(Student, c.teacher_id)
+        teacher_name = teacher.name if teacher else "Faculty"
+
+        s_count_res = await session.execute(
+            select(func.count(ClassEnrollment.id)).where(ClassEnrollment.class_id == c.id)
+        )
+        student_count = s_count_res.scalar() or 0
+
+        a_count_res = await session.execute(
+            select(func.count(Assignment.id)).where(Assignment.class_id == c.id)
+        )
+        assignment_count = a_count_res.scalar() or 0
+
+        class_responses.append(
+            ClassResponse(
+                id=c.id,
+                name=c.name,
+                section=c.section,
+                code=c.code,
+                color=c.color,
+                teacher_id=c.teacher_id,
+                teacher_name=teacher_name,
+                student_count=student_count,
+                assignment_count=assignment_count,
+                created_at=c.created_at,
+            )
+        )
+
+    return class_responses
+
+
+@app.post("/classes", response_model=ClassResponse, status_code=status.HTTP_201_CREATED, tags=["Classes"])
+async def create_class(
+    payload: ClassCreateRequest,
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """Creates a new class with an auto-generated unique 6-character code."""
+    charset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    for _ in range(10):
+        candidate_code = "".join(secrets.choice(charset) for _ in range(6))
+        exists_res = await session.execute(select(Class.id).where(Class.code == candidate_code))
+        if not exists_res.scalar_one_or_none():
+            break
+    else:
+        candidate_code = secrets.token_hex(3).upper()
+
+    new_class = Class(
+        name=payload.name,
+        section=payload.section,
+        code=candidate_code,
+        color=payload.color,
+        teacher_id=admin_user.id,
+    )
+    session.add(new_class)
+    await session.commit()
+    await session.refresh(new_class)
+
+    return ClassResponse(
+        id=new_class.id,
+        name=new_class.name,
+        section=new_class.section,
+        code=new_class.code,
+        color=new_class.color,
+        teacher_id=new_class.teacher_id,
+        teacher_name=admin_user.name,
+        student_count=0,
+        assignment_count=0,
+        created_at=new_class.created_at,
+    )
+
+
+@app.post("/classes/join", response_model=ClassResponse, tags=["Classes"])
+async def join_class(
+    payload: ClassJoinRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """Student joins a class using a 6-character class code."""
+    cleaned_code = payload.code.strip().upper()
+    res = await session.execute(select(Class).where(Class.code == cleaned_code))
+    target_class = res.scalar_one_or_none()
+
+    if not target_class:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No class found with code '{cleaned_code}'. Please verify the code with your instructor.",
+        )
+
+    # Check if already enrolled
+    enrolled_res = await session.execute(
+        select(ClassEnrollment).where(
+            and_(
+                ClassEnrollment.class_id == target_class.id,
+                ClassEnrollment.student_id == current_user.id,
+            )
+        )
+    )
+    if not enrolled_res.scalar_one_or_none():
+        enrollment = ClassEnrollment(class_id=target_class.id, student_id=current_user.id)
+        session.add(enrollment)
+        await session.commit()
+
+    teacher = await session.get(Student, target_class.teacher_id)
+    teacher_name = teacher.name if teacher else "Faculty"
+
+    s_count_res = await session.execute(
+        select(func.count(ClassEnrollment.id)).where(ClassEnrollment.class_id == target_class.id)
+    )
+    student_count = s_count_res.scalar() or 0
+
+    a_count_res = await session.execute(
+        select(func.count(Assignment.id)).where(Assignment.class_id == target_class.id)
+    )
+    assignment_count = a_count_res.scalar() or 0
+
+    return ClassResponse(
+        id=target_class.id,
+        name=target_class.name,
+        section=target_class.section,
+        code=target_class.code,
+        color=target_class.color,
+        teacher_id=target_class.teacher_id,
+        teacher_name=teacher_name,
+        student_count=student_count,
+        assignment_count=assignment_count,
+        created_at=target_class.created_at,
+    )
+
+
+@app.get("/classes/{id}", response_model=ClassResponse, tags=["Classes"])
+async def get_class(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    target_class = await session.get(Class, id)
+    if not target_class:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    teacher = await session.get(Student, target_class.teacher_id)
+    teacher_name = teacher.name if teacher else "Faculty"
+
+    s_count = (
+        await session.execute(
+            select(func.count(ClassEnrollment.id)).where(ClassEnrollment.class_id == id)
+        )
+    ).scalar() or 0
+
+    a_count = (
+        await session.execute(
+            select(func.count(Assignment.id)).where(Assignment.class_id == id)
+        )
+    ).scalar() or 0
+
+    return ClassResponse(
+        id=target_class.id,
+        name=target_class.name,
+        section=target_class.section,
+        code=target_class.code,
+        color=target_class.color,
+        teacher_id=target_class.teacher_id,
+        teacher_name=teacher_name,
+        student_count=s_count,
+        assignment_count=a_count,
+        created_at=target_class.created_at,
+    )
+
+
+@app.get("/classes/{id}/assignments", response_model=List[AssignmentResponse], tags=["Classes"])
+async def list_class_assignments(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """Lists all assignments belonging to a specific class."""
+    stmt = (
+        select(Assignment)
+        .where(Assignment.class_id == id)
+        .order_by(Assignment.deadline.asc())
+    )
+    res = await session.execute(stmt)
+    return [format_assignment_response(a) for a in res.scalars().all()]
+
+
+@app.post(
+    "/classes/{id}/assignments",
+    response_model=AssignmentResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Classes"],
+)
+async def create_class_assignment(
+    id: int,
+    title: str = Form(...),
+    description: str = Form(...),
+    rubric_text: str = Form(...),
+    max_marks: float = Form(100.0),
+    deadline: str = Form(...),
+    attachment: Optional[UploadFile] = File(None),
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """
+    Teacher creates an assignment inside a class:
+    1. Uploads optional PDF/document handout for students to read.
+    2. Provides textual task description and rubric criteria for AI grading (token-efficient).
+    """
+    try:
+        deadline_dt = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid deadline format. Please provide a valid ISO 8601 string.",
+        )
+
+    assignment = Assignment(
+        class_id=id,
+        title=title,
+        description=description,
+        rubric_text=rubric_text,
+        max_marks=max_marks,
+        deadline=deadline_dt,
+    )
+    session.add(assignment)
+    await session.commit()
+    await session.refresh(assignment)
+
+    if attachment and attachment.filename:
+        handout_dir = Path("uploads/handouts") / f"assignment_{assignment.id}"
+        handout_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = os.path.basename(attachment.filename)
+        dest_path = handout_dir / safe_name
+        with open(dest_path, "wb") as f:
+            shutil.copyfileobj(attachment.file, f)
+        assignment.attachment_path = str(dest_path)
+        assignment.attachment_name = safe_name
+        await session.commit()
+        await session.refresh(assignment)
+
+    logger.info(
+        "Admin %s created assignment id=%d in class id=%d (attachment=%s)",
+        admin_user.name, assignment.id, id, bool(assignment.attachment_path)
+    )
+    return format_assignment_response(assignment)
+
+
+@app.get("/assignments/{id}/attachment", tags=["Assignments"])
+async def download_assignment_attachment(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """Downloads the TA's uploaded PDF or document handout for an assignment."""
+    assignment = await session.get(Assignment, id)
+    if not assignment or not assignment.attachment_path or not os.path.exists(assignment.attachment_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No handout attached for this assignment.")
+
+    return FileResponse(
+        path=assignment.attachment_path,
+        filename=assignment.attachment_name or f"assignment_{id}_handout.pdf",
+        media_type="application/octet-stream",
+    )
+
+
+@app.get("/classes/{id}/students", response_model=List[ClassMemberResponse], tags=["Classes"])
+async def list_class_students(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """Lists students enrolled in a class."""
+    stmt = (
+        select(Student, ClassEnrollment.enrolled_at)
+        .join(ClassEnrollment, ClassEnrollment.student_id == Student.id)
+        .where(ClassEnrollment.class_id == id)
+        .order_by(Student.name.asc())
+    )
+    res = await session.execute(stmt)
+    members = []
+    for student_obj, enrolled_at in res.all():
+        members.append(
+            ClassMemberResponse(
+                student_id=student_obj.id,
+                name=student_obj.name,
+                email=student_obj.email,
+                role=student_obj.role.value,
+                enrolled_at=enrolled_at,
+            )
+        )
+    return members
+
+
 # ── Assignments Endpoints ─────────────────────────────────────────────────────
 
 @app.get("/assignments", response_model=List[AssignmentResponse], tags=["Assignments"])
@@ -143,7 +489,7 @@ async def list_assignments(
     """Lists all available assignments."""
     stmt = select(Assignment).order_by(Assignment.deadline.asc())
     res = await session.execute(stmt)
-    return res.scalars().all()
+    return [format_assignment_response(a) for a in res.scalars().all()]
 
 
 @app.get("/assignments/{id}", response_model=AssignmentResponse, tags=["Assignments"])
@@ -156,7 +502,7 @@ async def get_assignment(
     assignment = await session.get(Assignment, id)
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
-    return assignment
+    return format_assignment_response(assignment)
 
 
 @app.post(
@@ -175,6 +521,7 @@ async def create_assignment(
     Restricted to Admin/TA users.
     """
     assignment = Assignment(
+        class_id=payload.class_id,
         title=payload.title,
         description=payload.description,
         rubric_text=payload.rubric_text,
@@ -188,7 +535,7 @@ async def create_assignment(
         "Admin %s (id=%d) created assignment id=%d: '%s'",
         admin_user.name, admin_user.id, assignment.id, assignment.title,
     )
-    return assignment
+    return format_assignment_response(assignment)
 
 
 # ── Student Endpoints ─────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean, DateTime, Enum, Float, ForeignKey,
-    Integer, String, Text, func
+    Integer, String, Text, UniqueConstraint, func
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -52,19 +52,90 @@ class Student(Base):
     edited_grades: Mapped[list["Grade"]] = relationship(
         "Grade", back_populates="edited_by_admin", foreign_keys="Grade.edited_by_admin_id"
     )
+    created_classes: Mapped[list["Class"]] = relationship(
+        "Class", back_populates="teacher", cascade="all, delete-orphan"
+    )
+    class_enrollments: Mapped[list["ClassEnrollment"]] = relationship(
+        "ClassEnrollment", back_populates="student", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Student id={self.id} email={self.email} role={self.role}>"
 
 
+class Class(Base):
+    """
+    A Google Classroom-style course/class created by a teacher (admin).
+    Students join via a unique 6-character class code.
+    """
+    __tablename__ = "classes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    section: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    code: Mapped[str] = mapped_column(String(10), unique=True, index=True, nullable=False)
+    color: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="linear-gradient(135deg, #4f46e5, #06b6d4)"
+    )
+    teacher_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # Relationships
+    teacher: Mapped["Student"] = relationship("Student", back_populates="created_classes")
+    enrollments: Mapped[list["ClassEnrollment"]] = relationship(
+        "ClassEnrollment", back_populates="class_obj", cascade="all, delete-orphan"
+    )
+    assignments: Mapped[list["Assignment"]] = relationship(
+        "Assignment", back_populates="class_obj", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Class id={self.id} name={self.name!r} code={self.code!r}>"
+
+
+class ClassEnrollment(Base):
+    """
+    Links students to the classes they are enrolled in.
+    """
+    __tablename__ = "class_enrollments"
+    __table_args__ = (
+        UniqueConstraint("class_id", "student_id", name="uq_class_student"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    class_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    student_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    enrolled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # Relationships
+    class_obj: Mapped["Class"] = relationship("Class", back_populates="enrollments")
+    student: Mapped["Student"] = relationship("Student", back_populates="class_enrollments")
+
+    def __repr__(self) -> str:
+        return f"<ClassEnrollment class_id={self.class_id} student_id={self.student_id}>"
+
+
 class Assignment(Base):
     """
-    A lab assignment. Contains the task description and rubric
-    that will be sent to the LLM for grading.
+    A lab assignment within a class. Contains the task description and rubric
+    that will be sent to the LLM for grading, plus optional PDF/attachment for students.
     """
     __tablename__ = "assignments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    class_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(
         Text, nullable=False,
@@ -76,11 +147,17 @@ class Assignment(Base):
     )
     max_marks: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    
+    # Handout attachment for students (PDF / file)
+    attachment_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    attachment_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     # Relationships
+    class_obj: Mapped["Class | None"] = relationship("Class", back_populates="assignments")
     submissions: Mapped[list["Submission"]] = relationship(
         "Submission", back_populates="assignment", cascade="all, delete-orphan"
     )

@@ -2,14 +2,18 @@ import React from 'react';
 import { BookOpen, LogOut, Shield, User, Sparkles } from 'lucide-react';
 import { clearAuthSession } from '../api';
 
-export default function Navbar({ currentUser, activeView, onToggleView, onLogout }) {
+export default function Navbar({ currentUser, activeView, onToggleView, onNavigateHome, onLogout }) {
   const isAdmin = currentUser?.role === 'admin';
 
   return (
     <header className="glass-panel" style={{ borderRadius: '0', borderLeft: 'none', borderRight: 'none', borderTop: 'none', position: 'sticky', top: 0, zIndex: 40 }}>
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div
+          onClick={onNavigateHome}
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
+          title="Back to All Classes"
+        >
           <div style={{
             width: '38px',
             height: '38px',
@@ -25,20 +29,29 @@ export default function Navbar({ currentUser, activeView, onToggleView, onLogout
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontFamily: 'var(--font-heading)', fontSize: '1.2rem', fontWeight: '700', letterSpacing: '-0.02em' }}>
-                AutoGrade <span style={{ color: 'var(--accent-cyan)' }}>ML</span>
+                AutoGrade <span style={{ color: 'var(--accent-cyan)' }}>Classroom</span>
               </span>
               <span className={`badge ${activeView === 'admin' ? 'badge-processing' : 'badge-graded'}`} style={{ fontSize: '0.68rem', padding: '2px 8px' }}>
-                <Shield size={10} /> {activeView === 'admin' ? 'Admin Portal' : 'Student Portal'}
+                <Shield size={10} /> {activeView === 'admin' ? 'Teacher / TA' : 'Student'}
               </span>
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-              Automated Lab Evaluation & Plagiarism Detection
+              Multi-Class Automated Grading & Plagiarism Platform
             </div>
           </div>
         </div>
 
         {/* User Info & Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            onClick={onNavigateHome}
+            className="btn-ghost"
+            style={{ fontSize: '0.82rem', padding: '7px 12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <BookOpen size={15} />
+            <span>My Classes</span>
+          </button>
+
           {/* Admin Switcher */}
           {isAdmin && (
             <button
@@ -47,7 +60,7 @@ export default function Navbar({ currentUser, activeView, onToggleView, onLogout
               style={{ fontSize: '0.8rem', padding: '6px 12px' }}
               title="Toggle between Admin and Student perspective"
             >
-              {activeView === 'admin' ? 'Preview Student View' : 'Back to Admin View'}
+              {activeView === 'admin' ? 'Preview Student View' : 'Back to Teacher View'}
             </button>
           )}
 

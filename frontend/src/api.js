@@ -135,3 +135,46 @@ export async function uploadSubmissionApi(assignmentId, file) {
 export async function getMyGradesApi() {
   return apiRequest('/students/me/grades');
 }
+
+// ── Google Classroom APIs ──
+
+export async function getClassesApi() {
+  return apiRequest('/classes');
+}
+
+export async function createClassApi(classData) {
+  return apiRequest('/classes', {
+    method: 'POST',
+    body: JSON.stringify(classData),
+  });
+}
+
+export async function joinClassApi(code) {
+  return apiRequest('/classes/join', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
+}
+
+export async function getClassDetailsApi(classId) {
+  return apiRequest(`/classes/${classId}`);
+}
+
+export async function getClassAssignmentsApi(classId) {
+  return apiRequest(`/classes/${classId}/assignments`);
+}
+
+export async function createClassAssignmentApi(classId, formData) {
+  return apiRequest(`/classes/${classId}/assignments`, {
+    method: 'POST',
+    body: formData, // FormData with title, description, rubric_text, max_marks, deadline, attachment
+  });
+}
+
+export async function getClassStudentsApi(classId) {
+  return apiRequest(`/classes/${classId}/students`);
+}
+
+export function getAssignmentAttachmentUrl(assignmentId) {
+  return `/assignments/${assignmentId}/attachment`;
+}
