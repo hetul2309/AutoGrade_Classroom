@@ -54,6 +54,7 @@ from app.models import (
 from app.pipeline import run_grading_pipeline
 from app.schemas import (
     AdminGradeItem,
+    AssignmentCreateRequest,
     AssignmentResponse,
     GradePatchRequest,
     LoginRequest,
@@ -155,6 +156,38 @@ async def get_assignment(
     assignment = await session.get(Assignment, id)
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    return assignment
+
+
+@app.post(
+    "/admin/assignments",
+    response_model=AssignmentResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Admin"],
+)
+async def create_assignment(
+    payload: AssignmentCreateRequest,
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """
+    Creates a new assignment with rubric criteria, task description, max marks, and deadline.
+    Restricted to Admin/TA users.
+    """
+    assignment = Assignment(
+        title=payload.title,
+        description=payload.description,
+        rubric_text=payload.rubric_text,
+        max_marks=payload.max_marks,
+        deadline=payload.deadline,
+    )
+    session.add(assignment)
+    await session.commit()
+    await session.refresh(assignment)
+    logger.info(
+        "Admin %s (id=%d) created assignment id=%d: '%s'",
+        admin_user.name, admin_user.id, assignment.id, assignment.title,
+    )
     return assignment
 
 

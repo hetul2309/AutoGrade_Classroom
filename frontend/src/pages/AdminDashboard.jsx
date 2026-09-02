@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Sparkles, Play, RefreshCw, Search, Filter, AlertTriangle,
-  CheckCircle2, Clock, Edit3, Eye, FileText, ChevronDown, ChevronUp, Layers
+  CheckCircle2, Clock, Edit3, Eye, FileText, ChevronDown, ChevronUp, Layers, Plus
 } from 'lucide-react';
 import {
   getAssignmentsApi,
@@ -10,6 +10,7 @@ import {
 } from '../api';
 import EditGradeModal from '../components/EditGradeModal';
 import SimilarityFlagModal from '../components/SimilarityFlagModal';
+import CreateAssignmentModal from '../components/CreateAssignmentModal';
 import Toast from '../components/Toast';
 
 export default function AdminDashboard() {
@@ -23,10 +24,21 @@ export default function AdminDashboard() {
   const [statusFilter, setStatusFilter] = useState('all');
 
   // Modals & toast state
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingGrade, setEditingGrade] = useState(null);
   const [inspectingFlag, setInspectingFlag] = useState(null);
   const [expandedReasoning, setExpandedReasoning] = useState({});
   const [toast, setToast] = useState(null);
+
+  const handleAssignmentCreated = (newAssignment) => {
+    setAssignments((prev) => [...prev, newAssignment]);
+    setSelectedAssignmentId(newAssignment.id);
+    setShowCreateModal(false);
+    setToast({
+      message: `Published assignment "${newAssignment.title}" successfully!`,
+      type: 'success',
+    });
+  };
 
   // 1. Fetch Assignments
   useEffect(() => {
@@ -162,6 +174,13 @@ export default function AdminDashboard() {
         />
       )}
 
+      {showCreateModal && (
+        <CreateAssignmentModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={handleAssignmentCreated}
+        />
+      )}
+
       {/* Top Header: Assignment Selector + Trigger Action */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '20px', marginBottom: '28px' }}>
         <div>
@@ -176,14 +195,24 @@ export default function AdminDashboard() {
           </p>
         </div>
 
-        {/* Assignment Selector Dropdown */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* Assignment Selector & Create Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <button
+            id="create-assignment-btn"
+            onClick={() => setShowCreateModal(true)}
+            className="btn-primary"
+            style={{ fontSize: '0.85rem', padding: '9px 14px' }}
+          >
+            <Plus size={16} />
+            <span>New Assignment</span>
+          </button>
+
           <select
             id="assignment-select"
             value={selectedAssignmentId || ''}
             onChange={(e) => setSelectedAssignmentId(e.target.value)}
             className="form-input"
-            style={{ minWidth: '260px', fontWeight: '600' }}
+            style={{ minWidth: '240px', fontWeight: '600' }}
           >
             {assignments.map((a) => (
               <option key={a.id} value={a.id}>

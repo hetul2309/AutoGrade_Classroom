@@ -37,6 +37,14 @@ class UserResponse(BaseModel):
 
 # ── Assignment Schemas ────────────────────────────────────────────────────────
 
+class AssignmentCreateRequest(BaseModel):
+    title: str
+    description: str
+    rubric_text: str
+    max_marks: float = 100.0
+    deadline: datetime
+
+
 class AssignmentResponse(BaseModel):
     id: int
     title: str

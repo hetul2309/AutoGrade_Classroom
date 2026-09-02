@@ -114,6 +114,13 @@ export async function triggerGradingApi(assignmentId, direct = false) {
   });
 }
 
+export async function createAssignmentApi(assignmentData) {
+  return apiRequest('/admin/assignments', {
+    method: 'POST',
+    body: JSON.stringify(assignmentData),
+  });
+}
+
 // ── Student APIs ──
 export async function uploadSubmissionApi(assignmentId, file) {
   const formData = new FormData();
