@@ -33,7 +33,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import and_, desc, func, select
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -168,19 +168,28 @@ async def list_classes(
     current_user: Student = Depends(get_current_user),
 ):
     """
-    Lists classes for the authenticated user:
-    - If Admin/Teacher: all created classes
-    - If Student: classes enrolled in
+    Lists classes for the authenticated user.
+    Strict isolation rule:
+    A user (teacher or student) can ONLY see classes that they created OR are enrolled in.
+    If someone is neither the creator/teacher nor enrolled as a student,
+    the class is completely hidden from their dashboard.
     """
-    if current_user.role == UserRole.admin:
-        stmt = select(Class).order_by(Class.created_at.desc())
-    else:
-        stmt = (
-            select(Class)
-            .join(ClassEnrollment, ClassEnrollment.class_id == Class.id)
-            .where(ClassEnrollment.student_id == current_user.id)
-            .order_by(Class.created_at.desc())
+    enrolled_class_ids_subquery = (
+        select(ClassEnrollment.class_id)
+        .where(ClassEnrollment.student_id == current_user.id)
+        .scalar_subquery()
+    )
+
+    stmt = (
+        select(Class)
+        .where(
+            or_(
+                Class.teacher_id == current_user.id,
+                Class.id.in_(enrolled_class_ids_subquery),
+            )
         )
+        .order_by(Class.created_at.desc())
+    )
 
     res = await session.execute(stmt)
     classes = res.scalars().all()
@@ -317,15 +326,41 @@ async def join_class(
     )
 
 
+async def get_accessible_class(class_id: int, user: Student, session: AsyncSession) -> Class:
+    """
+    Verifies that the user is either the teacher who created the class
+    or an enrolled student. Rejects unauthorized access with 403 Forbidden.
+    """
+    target_class = await session.get(Class, class_id)
+    if not target_class:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    if target_class.teacher_id == user.id:
+        return target_class
+
+    enrolled = await session.execute(
+        select(ClassEnrollment).where(
+            and_(
+                ClassEnrollment.class_id == class_id,
+                ClassEnrollment.student_id == user.id,
+            )
+        )
+    )
+    if not enrolled.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. You are neither the instructor nor an enrolled student in this class.",
+        )
+    return target_class
+
+
 @app.get("/classes/{id}", response_model=ClassResponse, tags=["Classes"])
 async def get_class(
     id: int,
     session: AsyncSession = Depends(get_db),
     current_user: Student = Depends(get_current_user),
 ):
-    target_class = await session.get(Class, id)
-    if not target_class:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+    target_class = await get_accessible_class(id, current_user, session)
 
     teacher = await session.get(Student, target_class.teacher_id)
     teacher_name = teacher.name if teacher else "Faculty"
@@ -362,7 +397,9 @@ async def list_class_assignments(
     session: AsyncSession = Depends(get_db),
     current_user: Student = Depends(get_current_user),
 ):
-    """Lists all assignments belonging to a specific class."""
+    """Lists all assignments belonging to a specific class for authorized members."""
+    await get_accessible_class(id, current_user, session)
+
     stmt = (
         select(Assignment)
         .where(Assignment.class_id == id)
@@ -390,10 +427,17 @@ async def create_class_assignment(
     admin_user: Student = Depends(require_admin),
 ):
     """
-    Teacher creates an assignment inside a class:
-    1. Uploads optional PDF/document handout for students to read.
-    2. Provides textual task description and rubric criteria for AI grading (token-efficient).
+    Teacher creates an assignment inside a class.
+    Only the teacher who created this class can publish assignments for it.
     """
+    target_class = await session.get(Class, id)
+    if not target_class:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+    if target_class.teacher_id != admin_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the teacher who created this class can publish assignments for it.",
+        )
     try:
         deadline_dt = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
     except Exception:
