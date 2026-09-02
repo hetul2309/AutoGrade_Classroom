@@ -11,7 +11,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     ALGORITHM: str = "HS256"
 
-    # Anthropic
+    # LLM Settings
+    LLM_PROVIDER: str = "gemini"  # "gemini" or "anthropic"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
     ANTHROPIC_API_KEY: str = ""
 
     # App

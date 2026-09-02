@@ -8,6 +8,7 @@ Run with:
     uv run pytest tests/test_grading.py -v
 """
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
@@ -346,7 +347,11 @@ class TestGradeSubmission:
 
     def test_raises_api_error_when_no_key(self):
         with pytest.raises(GradingAPIError, match="ANTHROPIC_API_KEY"):
-            grade_submission(RUBRIC, TASK, NOTEBOOK_TEXT, api_key="")
+            grade_submission(RUBRIC, TASK, NOTEBOOK_TEXT, api_key="", provider="anthropic")
+
+    def test_raises_api_error_when_no_gemini_key(self):
+        with pytest.raises(GradingAPIError, match="GEMINI_API_KEY"):
+            grade_submission(RUBRIC, TASK, NOTEBOOK_TEXT, api_key="", provider="gemini")
 
     @patch("app.grading.anthropic.Anthropic")
     def test_raises_api_error_on_auth_failure(self, mock_anthropic_cls):
@@ -411,3 +416,34 @@ class TestGradeSubmission:
                                   max_marks=50.0, api_key="test-key")
         assert result.max_marks == 50.0
         assert result.percentage == 80.0
+
+    @patch("google.genai.Client")
+    def test_grade_with_gemini_success(self, mock_client_cls):
+        """Verify Gemini structured output grading works correctly."""
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+
+        mock_resp = MagicMock()
+        mock_resp.text = json.dumps({
+            "marks": 94.0,
+            "max_marks": 100.0,
+            "reasoning": "Excellent regression code with clean gradient descent.",
+            "flagged": False,
+            "flag_reason": None,
+        })
+        mock_resp.usage_metadata.prompt_token_count = 350
+        mock_resp.usage_metadata.candidates_token_count = 80
+        mock_client.models.generate_content.return_value = mock_resp
+
+        result = grade_submission(
+            RUBRIC, TASK, NOTEBOOK_TEXT,
+            api_key="AIzaSyDummyKeyForTesting",
+            provider="gemini",
+        )
+
+        assert isinstance(result, GradeResult)
+        assert result.marks == 94.0
+        assert result.flagged is False
+        assert "gradient descent" in result.reasoning
+        assert result.input_tokens == 350
+        assert result.output_tokens == 80

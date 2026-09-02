@@ -39,6 +39,7 @@ from app.grading import (
     _build_user_prompt,
     _extract_tool_input,
     _parse_grade_result,
+    grade_with_gemini,
 )
 from app.models import Assignment, Grade, Submission, SubmissionStatus
 from app.notebook_processing import process_notebook
@@ -310,6 +311,69 @@ async def submit_batch_node(state: PipelineState) -> Dict[str, Any]:
         logger.info("No requests to submit in batch.")
         return {"batch_id": None, "batch_status": "empty"}
 
+    # Check if using Google Gemini (Free) or Claude
+    provider = state.get("provider")
+    if not provider:
+        if state.get("client") is not None:
+            provider = "anthropic"
+        elif settings.GEMINI_API_KEY and not settings.ANTHROPIC_API_KEY:
+            provider = "gemini"
+        elif settings.ANTHROPIC_API_KEY and not settings.GEMINI_API_KEY:
+            provider = "anthropic"
+        else:
+            provider = (settings.LLM_PROVIDER or "gemini").lower()
+
+    if provider == "gemini":
+        logger.info("Executing batch grading via Google Gemini for %d submissions...", len(submissions))
+        raw_results = []
+        gemini_model = state.get("model") or settings.GEMINI_MODEL
+        rubric = state.get("rubric_text", "")
+        task_desc = state.get("assignment_description", "")
+        max_marks = state.get("max_marks", 100.0)
+
+        for i, sub in enumerate(submissions):
+            if sub.get("error") or not sub.get("cleaned_text"):
+                continue
+
+            sid = sub["submission_id"]
+            logger.info("Gemini grading submission %d/%d (id=%d)...", i + 1, len(submissions), sid)
+
+            # Pacing for Gemini Free Tier (15 RPM)
+            if i > 0:
+                await asyncio.sleep(4.1)
+
+            try:
+                res = grade_with_gemini(
+                    rubric=rubric,
+                    task_description=task_desc,
+                    notebook_text=sub["cleaned_text"],
+                    similarity_flag=sub.get("similarity_flag"),
+                    max_marks=max_marks,
+                    model=gemini_model,
+                )
+                raw_results.append({
+                    "custom_id": str(sid),
+                    "result": {
+                        "type": "succeeded",
+                        "grade_result": res,
+                    }
+                })
+            except Exception as exc:
+                logger.error("Gemini grading error for submission %d: %s", sid, exc)
+                raw_results.append({
+                    "custom_id": str(sid),
+                    "result": {
+                        "type": "errored",
+                        "error": str(exc),
+                    }
+                })
+
+        return {
+            "batch_id": "gemini_batch",
+            "batch_status": "ended",
+            "raw_batch_results": raw_results,
+        }
+
     client = state.get("client")
     if client is None:
         key = settings.ANTHROPIC_API_KEY
@@ -375,7 +439,7 @@ async def poll_batch_node(state: PipelineState) -> Dict[str, Any]:
     Fetches the raw results once ended.
     """
     batch_id = state.get("batch_id")
-    if not batch_id or batch_id == "direct_batch":
+    if not batch_id or batch_id in ("direct_batch", "gemini_batch"):
         return {}
 
     client = state.get("client")
@@ -476,22 +540,25 @@ async def parse_results_node(state: PipelineState) -> Dict[str, Any]:
         res_type = getattr(res_obj, "type", None) or (res_obj.get("type") if isinstance(res_obj, dict) else None)
 
         if res_type == "succeeded":
-            message = getattr(res_obj, "message", None) or (res_obj.get("message") if isinstance(res_obj, dict) else None)
-            try:
-                tool_input = _extract_tool_input(message)
-                usage = getattr(message, "usage", None) or (message.get("usage") if isinstance(message, dict) else None)
-                grade_res = _parse_grade_result(
-                    tool_input=tool_input,
-                    max_marks=max_marks,
-                    model=model,
-                    usage=usage,
-                    similarity_flag=sub.get("similarity_flag"),
-                )
-                sub["grade_result"] = grade_res
-            except Exception as exc:
-                err_msg = f"Failed to parse tool output for submission id={sid_str}: {exc}"
-                logger.warning(err_msg)
-                sub["error"] = err_msg
+            if isinstance(res_obj, dict) and "grade_result" in res_obj:
+                sub["grade_result"] = res_obj["grade_result"]
+            else:
+                message = getattr(res_obj, "message", None) or (res_obj.get("message") if isinstance(res_obj, dict) else None)
+                try:
+                    tool_input = _extract_tool_input(message)
+                    usage = getattr(message, "usage", None) or (message.get("usage") if isinstance(message, dict) else None)
+                    grade_res = _parse_grade_result(
+                        tool_input=tool_input,
+                        max_marks=max_marks,
+                        model=model,
+                        usage=usage,
+                        similarity_flag=sub.get("similarity_flag"),
+                    )
+                    sub["grade_result"] = grade_res
+                except Exception as exc:
+                    err_msg = f"Failed to parse tool output for submission id={sid_str}: {exc}"
+                    logger.warning(err_msg)
+                    sub["error"] = err_msg
 
         elif res_type == "errored":
             error_val = getattr(res_obj, "error", None) or (res_obj.get("error") if isinstance(res_obj, dict) else None)

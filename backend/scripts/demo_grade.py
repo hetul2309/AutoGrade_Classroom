@@ -76,11 +76,22 @@ def main():
     print(result.text[:800] + "\n... (truncated for display)")
 
     # Step 2: Grade with LLM
-    print("\n[2/3] Calling Anthropic API...")
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        print("ERROR: ANTHROPIC_API_KEY not set in .env — cannot run demo.")
-        print("Set it and re-run: uv run python scripts/demo_grade.py")
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    if gemini_key and not gemini_key.startswith("your-"):
+        print("\n[2/3] Calling Google Gemini API (100% Free)...")
+        chosen_key = gemini_key
+        provider = "gemini"
+    elif anthropic_key and not anthropic_key.startswith("your-"):
+        print("\n[2/3] Calling Anthropic Claude API...")
+        chosen_key = anthropic_key
+        provider = "anthropic"
+    else:
+        print("\nERROR: Neither GEMINI_API_KEY nor ANTHROPIC_API_KEY is set in .env.")
+        print(">> Get a 100% FREE key at https://aistudio.google.com/ (no credit card needed).")
+        print(">> Add it to .env as:")
+        print("   GEMINI_API_KEY=your_key_here")
         sys.exit(1)
 
     try:
@@ -90,7 +101,8 @@ def main():
             notebook_text=result.text,
             similarity_flag=None,
             max_marks=100.0,
-            api_key=api_key,
+            api_key=chosen_key,
+            provider=provider,
         )
     except GradingError as e:
         print(f"ERROR: {e}")

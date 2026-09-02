@@ -24,6 +24,7 @@ dependencies = [
     "nbformat>=5.10.0",
     # Orchestration (Phase 5+)
     "langgraph>=0.2.0",
+    "google-genai>=2.21.0",
 ]
 
 [project.optional-dependencies]

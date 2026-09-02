@@ -27,11 +27,13 @@ Design notes
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 import anthropic
+from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.similarity import SimilarityFlag
@@ -39,6 +41,27 @@ from app.similarity import SimilarityFlag
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
+
+# ── Gemini Schema ─────────────────────────────────────────────────────────────
+
+class GeminiGradeSchema(BaseModel):
+    marks: float = Field(
+        description="Total numeric marks awarded to the student according to the rubric breakdown."
+    )
+    max_marks: float = Field(
+        description="Maximum achievable marks for this assignment."
+    )
+    reasoning: str = Field(
+        description="Detailed, objective critique explaining how the student performed against each rubric criterion."
+    )
+    flagged: bool = Field(
+        description="Set to true if a similarity flag was provided in the prompt or plagiarism is suspected; otherwise false."
+    )
+    flag_reason: str | None = Field(
+        default=None,
+        description="Explanation of why this submission was flagged, or null if flagged is false."
+    )
 
 
 # ── Typed exceptions ──────────────────────────────────────────────────────────
@@ -186,7 +209,89 @@ def _build_user_prompt(
 
 # ── Core grading function ─────────────────────────────────────────────────────
 
-def grade_submission(
+def grade_with_gemini(
+    rubric: str,
+    task_description: str,
+    notebook_text: str,
+    similarity_flag: SimilarityFlag | None = None,
+    max_marks: float = 100.0,
+    model: str = "gemini-2.0-flash",
+    api_key: str | None = None,
+) -> GradeResult:
+    """
+    Grade a single student's preprocessed notebook using Google Gemini's Free API.
+    Guarantees structured JSON output matching GeminiGradeSchema.
+    """
+    from google import genai
+    from google.genai import types
+
+    key = api_key or settings.GEMINI_API_KEY
+    if not key or key.startswith("your-"):
+        raise GradingAPIError(
+            "GEMINI_API_KEY is not set. Get a free API key at https://aistudio.google.com and add it to .env"
+        )
+
+    system_prompt = _build_system_prompt()
+    user_prompt = _build_user_prompt(
+        task_description=task_description,
+        rubric=rubric,
+        notebook_text=notebook_text,
+        max_marks=max_marks,
+        similarity_flag=similarity_flag,
+    )
+
+    logger.info(
+        "Calling Gemini (%s) to grade submission (flag=%s, max_marks=%s)",
+        model, similarity_flag is not None, max_marks,
+    )
+
+    try:
+        client = genai.Client(api_key=key)
+        response = client.models.generate_content(
+            model=model,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="application/json",
+                response_schema=GeminiGradeSchema,
+                temperature=0.2,
+            ),
+        )
+    except Exception as exc:
+        err_str = str(exc)
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            raise GradingAPIError(f"Gemini free rate limit reached (15 RPM): {exc}") from exc
+        raise GradingAPIError(f"Gemini API error: {exc}") from exc
+
+    raw_text = getattr(response, "text", "") or ""
+    if not raw_text.strip():
+        raise GradingParseError("Gemini returned an empty response.")
+
+    try:
+        tool_input = json.loads(raw_text)
+    except Exception as exc:
+        raise GradingParseError(
+            f"Failed to parse JSON response from Gemini: {exc}. Raw: {raw_text[:200]}"
+        ) from exc
+
+    usage = getattr(response, "usage_metadata", None)
+    in_tok = getattr(usage, "prompt_token_count", 0) if usage else 0
+    out_tok = getattr(usage, "candidates_token_count", 0) if usage else 0
+
+    class DummyUsage:
+        input_tokens = in_tok
+        output_tokens = out_tok
+
+    return _parse_grade_result(
+        tool_input=tool_input,
+        max_marks=max_marks,
+        model=model,
+        usage=DummyUsage(),
+        similarity_flag=similarity_flag,
+    )
+
+
+def _grade_with_claude(
     rubric: str,
     task_description: str,
     notebook_text: str,
@@ -196,29 +301,10 @@ def grade_submission(
     api_key: str | None = None,
 ) -> GradeResult:
     """
-    Grade a single student's preprocessed notebook using the Claude API.
-
-    Args:
-        rubric:           The assignment rubric text (from DB).
-        task_description: Plain-text description of the assignment task.
-        notebook_text:    Output from notebook_processing.process_notebook_text().
-        similarity_flag:  Pre-computed flag from similarity.find_similar_pairs(),
-                          or None if no flag was raised. The model uses this
-                          as context but does NOT perform its own plagiarism check.
-        max_marks:        Maximum marks for this assignment.
-        model:            Claude model name to use.
-        api_key:          Override the API key from settings (useful for testing).
-
-    Returns:
-        GradeResult with marks, reasoning, and flag status.
-
-    Raises:
-        GradingAPIError:   API call failed (network, auth, rate limit).
-        GradingParseError: Response did not contain a valid tool call.
-        GradingTimeoutError: Request timed out.
+    Grade using Anthropic Claude with tool use.
     """
     key = api_key or settings.ANTHROPIC_API_KEY
-    if not key:
+    if not key or key.startswith("your-"):
         raise GradingAPIError(
             "ANTHROPIC_API_KEY is not set. Add it to your .env file."
         )
@@ -276,6 +362,61 @@ def grade_submission(
     )
 
     return result
+
+
+def grade_submission(
+    rubric: str,
+    task_description: str,
+    notebook_text: str,
+    similarity_flag: SimilarityFlag | None = None,
+    max_marks: float = 100.0,
+    model: str | None = None,
+    api_key: str | None = None,
+    provider: str | None = None,
+) -> GradeResult:
+    """
+    Main grading entry point supporting both Google Gemini (Free) and Anthropic Claude.
+    Automatically picks provider based on configuration or available API keys.
+    """
+    chosen_provider = provider
+
+    if not chosen_provider:
+        if api_key:
+            if api_key.startswith("AIza"):
+                chosen_provider = "gemini"
+            else:
+                chosen_provider = "anthropic"
+        elif settings.GEMINI_API_KEY and not settings.ANTHROPIC_API_KEY:
+            chosen_provider = "gemini"
+        elif settings.ANTHROPIC_API_KEY and not settings.GEMINI_API_KEY:
+            chosen_provider = "anthropic"
+        else:
+            chosen_provider = (settings.LLM_PROVIDER or "gemini").lower()
+
+    # Route to Gemini
+    if chosen_provider == "gemini":
+        m = model or settings.GEMINI_MODEL
+        return grade_with_gemini(
+            rubric=rubric,
+            task_description=task_description,
+            notebook_text=notebook_text,
+            similarity_flag=similarity_flag,
+            max_marks=max_marks,
+            model=m,
+            api_key=api_key,
+        )
+
+    # Route to Claude
+    m = model or "claude-sonnet-4-5"
+    return _grade_with_claude(
+        rubric=rubric,
+        task_description=task_description,
+        notebook_text=notebook_text,
+        similarity_flag=similarity_flag,
+        max_marks=max_marks,
+        model=m,
+        api_key=api_key,
+    )
 
 
 # ── Response parsing helpers ──────────────────────────────────────────────────
