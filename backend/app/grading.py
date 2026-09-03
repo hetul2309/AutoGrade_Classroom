@@ -178,11 +178,15 @@ def _build_user_prompt(
     notebook_text: str,
     max_marks: float,
     similarity_flag: SimilarityFlag | None,
+    plagiarism_policy: str | None = None,
 ) -> str:
     parts: list[str] = []
 
     parts.append("## Assignment Task Description\n" + task_description.strip())
-    parts.append(f"## Grading Rubric (Total: {max_marks} marks)\n" + rubric.strip())
+    parts.append(f"## Academic Marking Rubric (Total: {max_marks} marks)\n" + rubric.strip())
+
+    if plagiarism_policy and plagiarism_policy.strip():
+        parts.append("## Academic Integrity & Cheating Policy\n" + plagiarism_policy.strip())
 
     if similarity_flag:
         parts.append(
@@ -194,7 +198,7 @@ def _build_user_prompt(
     else:
         parts.append(
             "## Similarity Check\n"
-            "No similarity flag detected. Set flagged=false."
+            "No similarity flag detected. Grade purely on the Academic Marking Rubric. Set flagged=false."
         )
 
     parts.append("## Student Notebook Submission\n" + notebook_text.strip())
@@ -213,8 +217,9 @@ def grade_with_gemini(
     task_description: str,
     notebook_text: str,
     similarity_flag: SimilarityFlag | None = None,
+    plagiarism_policy: str | None = None,
     max_marks: float = 100.0,
-    model: str = "gemini-2.0-flash",
+    model: str = "gemini-flash-latest",
     api_key: str | None = None,
 ) -> GradeResult:
     """
@@ -400,6 +405,7 @@ def grade_submission(
     task_description: str,
     notebook_text: str,
     similarity_flag: SimilarityFlag | None = None,
+    plagiarism_policy: str | None = None,
     max_marks: float = 100.0,
     model: str | None = None,
     api_key: str | None = None,
@@ -432,6 +438,7 @@ def grade_submission(
             task_description=task_description,
             notebook_text=notebook_text,
             similarity_flag=similarity_flag,
+            plagiarism_policy=plagiarism_policy,
             max_marks=max_marks,
             model=m,
             api_key=api_key,

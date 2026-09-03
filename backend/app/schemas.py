@@ -79,6 +79,7 @@ class AssignmentCreateRequest(BaseModel):
     title: str
     description: str
     rubric_text: str
+    plagiarism_policy: Optional[str] = None
     max_marks: float = 100.0
     deadline: datetime
 
@@ -87,6 +88,7 @@ class AssignmentUpdateRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     rubric_text: Optional[str] = None
+    plagiarism_policy: Optional[str] = None
     max_marks: Optional[float] = None
     deadline: Optional[datetime] = None
 
@@ -97,6 +99,7 @@ class AssignmentResponse(BaseModel):
     title: str
     description: str
     rubric_text: str
+    plagiarism_policy: Optional[str] = None
     max_marks: float
     deadline: datetime
     attachment_name: Optional[str] = None

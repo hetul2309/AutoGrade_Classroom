@@ -176,6 +176,7 @@ async def preprocess_node(state: PipelineState) -> Dict[str, Any]:
             "assignment_title": assignment.title,
             "assignment_description": assignment.description,
             "rubric_text": assignment.rubric_text,
+            "plagiarism_policy": assignment.plagiarism_policy,
             "max_marks": assignment.max_marks,
             "submissions": submissions_data,
             "errors": errors,
@@ -367,8 +368,9 @@ async def submit_batch_node(state: PipelineState) -> Dict[str, Any]:
         logger.info("Executing batch grading via Google Gemini for %d submissions...", len(submissions))
         raw_results = []
         raw_model = state.get("model")
-        gemini_model = raw_model if (raw_model and "gemini" in raw_model) else (settings.GEMINI_MODEL or "gemini-3.5-flash")
+        gemini_model = raw_model if (raw_model and "gemini" in raw_model) else (settings.GEMINI_MODEL or "gemini-flash-latest")
         rubric = state.get("rubric_text", "")
+        plag_policy = state.get("plagiarism_policy", "")
         task_desc = state.get("assignment_description", "")
         max_marks = state.get("max_marks", 100.0)
 
@@ -390,6 +392,7 @@ async def submit_batch_node(state: PipelineState) -> Dict[str, Any]:
                     task_description=task_desc,
                     notebook_text=sub["cleaned_text"],
                     similarity_flag=sub.get("similarity_flag"),
+                    plagiarism_policy=plag_policy,
                     max_marks=max_marks,
                     model=gemini_model,
                 )

@@ -145,6 +145,10 @@ class Assignment(Base):
         Text, nullable=False,
         comment="Grading rubric — tells the LLM how to assign marks"
     )
+    plagiarism_policy: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="Plagiarism & Cheating Policy — used for copy detection during batch evaluation"
+    )
     max_marks: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     

@@ -46,10 +46,11 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Prompt & Rubric editing state in Evaluation tab
+  // Prompt & Rubric in-place editing state
   const [editingPromptRubric, setEditingPromptRubric] = useState(false);
   const [promptDesc, setPromptDesc] = useState('');
   const [promptRubric, setPromptRubric] = useState('');
+  const [promptPlagiarism, setPromptPlagiarism] = useState('');
   const [savingPrompt, setSavingPrompt] = useState(false);
 
   // Recheck single & all states
@@ -176,8 +177,9 @@ export default function ClassDetailPage({ classId, user, onBack }) {
     if (currentAssignment && !editingPromptRubric) {
       setPromptDesc(currentAssignment.description || '');
       setPromptRubric(currentAssignment.rubric_text || '');
+      setPromptPlagiarism(currentAssignment.plagiarism_policy || '');
     }
-  }, [currentAssignment?.id, currentAssignment?.description, currentAssignment?.rubric_text, editingPromptRubric]);
+  }, [currentAssignment?.id, currentAssignment?.description, currentAssignment?.rubric_text, currentAssignment?.plagiarism_policy, editingPromptRubric]);
 
   const handleSavePromptRubric = async () => {
     if (!selectedAssignmentId) return;
@@ -186,12 +188,14 @@ export default function ClassDetailPage({ classId, user, onBack }) {
       const updated = await updateAssignmentApi(selectedAssignmentId, {
         description: promptDesc,
         rubric_text: promptRubric,
+        plagiarism_policy: promptPlagiarism,
       });
       setAssignments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
       setPromptDesc(updated.description || '');
       setPromptRubric(updated.rubric_text || '');
+      setPromptPlagiarism(updated.plagiarism_policy || '');
       setEditingPromptRubric(false);
-      setToast({ message: 'Assignment Description & LLM Rubric updated successfully!', type: 'success' });
+      setToast({ message: 'Task Description, Marking Rubric & Plagiarism Policy updated successfully!', type: 'success' });
     } catch (err) {
       setToast({ message: err.message || 'Failed to save prompt/rubric', type: 'error' });
     } finally {
@@ -797,10 +801,10 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                   </div>
                   <div>
                     <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-bright)' }}>
-                      LLM Grading Prompt & Rubric
+                      LLM Grading Prompt, Marking Rubric & Integrity Policy
                     </h3>
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                      Used as direct instructions for automated AI notebook evaluation
+                      Individual rechecks evaluate academic merit; batch rechecks also apply the cheating policy
                     </span>
                   </div>
                 </div>
@@ -814,7 +818,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                       style={{ padding: '7px 14px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
                       <Edit3 size={14} />
-                      <span>Edit Prompt & Rubric</span>
+                      <span>Edit Prompts & Rubrics</span>
                     </button>
                   ) : (
                     <>
@@ -822,6 +826,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                         onClick={() => {
                           setPromptDesc(currentAssignment.description || '');
                           setPromptRubric(currentAssignment.rubric_text || '');
+                          setPromptPlagiarism(currentAssignment.plagiarism_policy || '');
                           setEditingPromptRubric(false);
                         }}
                         disabled={savingPrompt}
@@ -854,13 +859,13 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                 </div>
               </div>
 
-              {/* Prompt & Rubric Content Form / Display */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '18px' }}>
+              {/* Prompt, Marking Rubric & Cheating Policy Form / Display */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '18px' }}>
                 {/* 1. Assignment Description (Prompt to LLM) */}
                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--accent-cyan)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <FileText size={15} />
-                    <span>Lab Task Description (Teacher Prompt to LLM)</span>
+                    <span>1. Lab Task Description (LLM Prompt)</span>
                   </div>
 
                   {editingPromptRubric ? (
@@ -870,7 +875,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                       rows={5}
                       className="form-input"
                       style={{ width: '100%', fontSize: '0.84rem', fontFamily: 'inherit', resize: 'vertical' }}
-                      placeholder="Enter the lab task instructions and prompt for LLM evaluation..."
+                      placeholder="Enter the lab task instructions for LLM context..."
                     />
                   ) : (
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', whiteSpace: 'pre-wrap', maxHeight: '160px', overflowY: 'auto' }}>
@@ -879,11 +884,11 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                   )}
                 </div>
 
-                {/* 2. Grading Rubric */}
+                {/* 2. Academic Marking Rubric */}
                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
                   <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Sparkles size={15} />
-                    <span>Grading Rubric & Marks Criteria (Max: {currentAssignment.max_marks} marks)</span>
+                    <span>2. Academic Marking Rubric (Max: {currentAssignment.max_marks})</span>
                   </div>
 
                   {editingPromptRubric ? (
@@ -893,11 +898,34 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                       rows={5}
                       className="form-input"
                       style={{ width: '100%', fontSize: '0.84rem', fontFamily: 'inherit', resize: 'vertical' }}
-                      placeholder="Enter rubric breakdown (e.g. 1. Model Implementation: 5 marks, 2. Visualization: 5 marks)..."
+                      placeholder="Enter marking criteria (e.g. integer marks {7, 8, 9, 10})..."
                     />
                   ) : (
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', whiteSpace: 'pre-wrap', maxHeight: '160px', overflowY: 'auto' }}>
                       {currentAssignment.rubric_text || 'No rubric text provided.'}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Cheating & Plagiarism Policy */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: '700', color: '#f59e0b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <AlertTriangle size={15} />
+                    <span>3. Cheating & Plagiarism Policy (Batch Check)</span>
+                  </div>
+
+                  {editingPromptRubric ? (
+                    <textarea
+                      value={promptPlagiarism}
+                      onChange={(e) => setPromptPlagiarism(e.target.value)}
+                      rows={5}
+                      className="form-input"
+                      style={{ width: '100%', fontSize: '0.84rem', fontFamily: 'inherit', resize: 'vertical' }}
+                      placeholder="Enter cheating policy (e.g. flag only 100% word-for-word copy cases and award 0 marks)..."
+                    />
+                  ) : (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', whiteSpace: 'pre-wrap', maxHeight: '160px', overflowY: 'auto' }}>
+                      {currentAssignment.plagiarism_policy || 'Flag only 100% verbatim copy cases with 0 marks.'}
                     </div>
                   )}
                 </div>

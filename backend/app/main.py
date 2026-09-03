@@ -154,6 +154,7 @@ def format_assignment_response(a: Assignment) -> AssignmentResponse:
         title=a.title,
         description=a.description,
         rubric_text=a.rubric_text,
+        plagiarism_policy=a.plagiarism_policy,
         max_marks=a.max_marks,
         deadline=a.deadline,
         attachment_name=a.attachment_name,
@@ -422,6 +423,7 @@ async def create_class_assignment(
     title: str = Form(...),
     description: str = Form(...),
     rubric_text: str = Form(...),
+    plagiarism_policy: Optional[str] = Form(None),
     max_marks: float = Form(100.0),
     deadline: str = Form(...),
     attachment: Optional[UploadFile] = File(None),
@@ -453,6 +455,7 @@ async def create_class_assignment(
         title=title,
         description=description,
         rubric_text=rubric_text,
+        plagiarism_policy=plagiarism_policy,
         max_marks=max_marks,
         deadline=deadline_dt,
     )
@@ -492,6 +495,7 @@ async def update_assignment(
     - Extend or change the deadline
     - Update instructions given to students (description)
     - Update prompt / criteria given to LLM (rubric_text)
+    - Update plagiarism & cheating policy (plagiarism_policy)
     - Update max marks
     - Optionally upload a new / replacement PDF handout
     Supports both JSON payloads and multipart/form-data.
@@ -515,6 +519,7 @@ async def update_assignment(
         title = form.get("title")
         description = form.get("description")
         rubric_text = form.get("rubric_text")
+        plagiarism_policy = form.get("plagiarism_policy")
         max_marks = form.get("max_marks")
         deadline = form.get("deadline")
         attachment = form.get("attachment")
@@ -525,6 +530,8 @@ async def update_assignment(
             assignment.description = str(description).strip()
         if rubric_text is not None:
             assignment.rubric_text = str(rubric_text).strip()
+        if plagiarism_policy is not None:
+            assignment.plagiarism_policy = str(plagiarism_policy).strip()
         if max_marks is not None and str(max_marks).strip():
             try:
                 assignment.max_marks = float(max_marks)
@@ -560,6 +567,8 @@ async def update_assignment(
             assignment.description = str(body["description"]).strip()
         if "rubric_text" in body and body["rubric_text"] is not None:
             assignment.rubric_text = str(body["rubric_text"]).strip()
+        if "plagiarism_policy" in body and body["plagiarism_policy"] is not None:
+            assignment.plagiarism_policy = str(body["plagiarism_policy"]).strip()
         if "max_marks" in body and body["max_marks"] is not None:
             try:
                 assignment.max_marks = float(body["max_marks"])
@@ -577,8 +586,9 @@ async def update_assignment(
     await session.commit()
     await session.refresh(assignment)
     logger.info(
-        "Admin %s updated assignment id=%d (%s): desc_len=%d, rubric_len=%d",
-        admin_user.name, assignment.id, assignment.title, len(assignment.description or ""), len(assignment.rubric_text or "")
+        "Admin %s updated assignment id=%d (%s): desc_len=%d, rubric_len=%d, plag_len=%d",
+        admin_user.name, assignment.id, assignment.title,
+        len(assignment.description or ""), len(assignment.rubric_text or ""), len(assignment.plagiarism_policy or "")
     )
     return format_assignment_response(assignment)
 
@@ -967,59 +977,13 @@ async def recheck_single_submission(
 
     nb_result = process_notebook(path)
 
-    # 2. Check pairwise similarity against all other submissions in this assignment
-    other_subs_res = await session.execute(
-        select(Submission)
-        .where(Submission.assignment_id == sub.assignment_id, Submission.id != sub.id)
-    )
-    other_subs = other_subs_res.scalars().all()
-
-    sub_texts = [
-        SubmissionText(
-            student_id=sub.student_id,
-            submission_id=sub.id,
-            code_cells=[(c.index, c.source) for c in nb_result.processed_cells if c.cell_type == "code"]
-        )
-    ]
-    for os_sub in other_subs:
-        os_path = Path(os_sub.file_path)
-        if os_path.exists():
-            try:
-                os_nb = process_notebook(os_path)
-                sub_texts.append(
-                    SubmissionText(
-                        student_id=os_sub.student_id,
-                        submission_id=os_sub.id,
-                        code_cells=[(c.index, c.source) for c in os_nb.processed_cells if c.cell_type == "code"]
-                    )
-                )
-            except Exception:
-                pass
-
-    similarity_flag = None
-    if len(sub_texts) >= 2:
-        flags = find_similar_pairs(sub_texts, threshold=0.75)
-        for f in flags:
-            if f.submission_id_a == sub.id or f.submission_id_b == sub.id:
-                partner_stu_id = f.student_id_b if f.submission_id_a == sub.id else f.student_id_a
-                partner_student = await session.get(Student, partner_stu_id)
-                partner_email = partner_student.email if partner_student else f"{partner_stu_id}@dau.ac.in"
-                partner_name = partner_student.name if partner_student else "Student"
-
-                f.explanation = (
-                    f"Code match of {f.overall_score * 100:.1f}% detected with Student ID {partner_stu_id} "
-                    f"({partner_name}, {partner_email}) across {len(f.matched_cells)} cell(s)."
-                )
-                similarity_flag = f
-                break
-
-    # 3. Grade with LLM using latest rubric and task description
+    # 2. Grade with LLM strictly using latest Academic Marking Rubric (ignoring cheating criteria on individual recheck)
     res = await asyncio.to_thread(
         grade_submission,
         rubric=assignment.rubric_text,
         task_description=assignment.description,
         notebook_text=nb_result.text,
-        similarity_flag=similarity_flag,
+        similarity_flag=None,
         max_marks=assignment.max_marks,
     )
 
