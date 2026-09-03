@@ -93,6 +93,7 @@ class AssignmentUpdateRequest(BaseModel):
     plagiarism_policy: Optional[str] = None
     max_marks: Optional[float] = None
     deadline: Optional[datetime] = None
+    results_published: Optional[bool] = None
 
 
 class AssignmentResponse(BaseModel):
@@ -105,6 +106,7 @@ class AssignmentResponse(BaseModel):
     plagiarism_policy: Optional[str] = None
     max_marks: float
     deadline: datetime
+    results_published: bool = False
     attachment_name: Optional[str] = None
     has_attachment: bool = False
     created_at: datetime

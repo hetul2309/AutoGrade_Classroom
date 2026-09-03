@@ -3,7 +3,7 @@ import {
   ArrowLeft, BookOpen, Users, Cpu, Plus, Copy, Check, FileDown,
   Upload, Clock, CheckCircle2, AlertTriangle, Play, Sparkles,
   ChevronDown, ChevronUp, Edit3, Eye, FileText, Calendar, RefreshCw,
-  RotateCw, RotateCcw, Save, X, HelpCircle
+  RotateCw, RotateCcw, Save, X, HelpCircle, Send, EyeOff
 } from 'lucide-react';
 import {
   getClassDetailsApi,
@@ -13,6 +13,8 @@ import {
   triggerGradingApi,
   recheckAllAssignmentApi,
   recheckSubmissionApi,
+  publishAssignmentResultsApi,
+  unpublishAssignmentResultsApi,
   updateAssignmentApi,
   uploadSubmissionApi,
   getMyGradesApi,
@@ -59,6 +61,10 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   const [confirmRecheckAll, setConfirmRecheckAll] = useState(false);
   const [recheckingAll, setRecheckingAll] = useState(false);
   const [quotaError, setQuotaError] = useState(null);
+
+  // Publish Results state
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [publishingResults, setPublishingResults] = useState(false);
 
   // Modals & UI toggles
   const [showCreateAssignmentModal, setShowCreateAssignmentModal] = useState(false);
@@ -308,6 +314,27 @@ export default function ClassDetailPage({ classId, user, onBack }) {
     }
   };
 
+  const handlePublishResults = async (publish = true) => {
+    if (!selectedAssignmentId) return;
+    setPublishingResults(true);
+    try {
+      let updated;
+      if (publish) {
+        updated = await publishAssignmentResultsApi(selectedAssignmentId);
+        setToast({ message: '🎉 Results published! Students can now view their scores and AI feedback.', type: 'success' });
+      } else {
+        updated = await unpublishAssignmentResultsApi(selectedAssignmentId);
+        setToast({ message: 'Results unpublished. Students will now see "Result Pending".', type: 'info' });
+      }
+      setAssignments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      setShowPublishModal(false);
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to update result publish status', type: 'error' });
+    } finally {
+      setPublishingResults(false);
+    }
+  };
+
   // Stats for evaluation tab
   const evalStats = useMemo(() => {
     const total = evalGrades.length;
@@ -538,7 +565,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
               {assignments.map((ass) => {
                 const myGrade = studentGrades.find((g) => g.assignment_id === ass.id);
                 const isUploaded = Boolean(myGrade);
-                const isGraded = myGrade?.marks !== null && myGrade?.marks !== undefined;
+                const isGraded = Boolean(ass.results_published && myGrade?.marks !== null && myGrade?.marks !== undefined);
 
                 return (
                   <div key={ass.id} className="glass-panel" style={{ padding: '24px', borderRadius: '14px', borderLeft: '4px solid var(--primary)' }}>
@@ -942,6 +969,52 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                   </>
                 )}
               </button>
+
+              {/* Publish Results to Students Button */}
+              {currentAssignment && (
+                !currentAssignment.results_published ? (
+                  <button
+                    onClick={() => setShowPublishModal(true)}
+                    disabled={publishingResults || evalGrades.length === 0}
+                    className="btn-primary"
+                    style={{
+                      padding: '9px 20px',
+                      fontSize: '0.88rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: 'linear-gradient(135deg, #10b981, #06b6d4)',
+                      borderColor: '#10b981',
+                      boxShadow: '0 0 16px rgba(16, 185, 129, 0.25)',
+                      fontWeight: '700'
+                    }}
+                    title="Publish evaluated grades and feedback to students"
+                  >
+                    <Send size={16} />
+                    <span>Publish Results to Students</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handlePublishResults(false)}
+                    disabled={publishingResults}
+                    className="btn-secondary"
+                    style={{
+                      padding: '9px 16px',
+                      fontSize: '0.88rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      borderColor: 'rgba(16, 185, 129, 0.5)',
+                      background: 'rgba(16, 185, 129, 0.12)',
+                      color: '#34d399',
+                    }}
+                    title="Results are currently visible to students. Click to unpublish."
+                  >
+                    <CheckCircle2 size={16} color="#34d399" />
+                    <span>Results Published (Unpublish)</span>
+                  </button>
+                )
+              )}
             </div>
           </div>
 
@@ -1334,6 +1407,53 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                   </button>
                   <button onClick={handleRecheckAll} className="btn-primary" style={{ padding: '8px 20px', fontSize: '0.86rem', background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
                     Confirm Recheck All
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CONFIRMATION MODAL: PUBLISH RESULTS TO STUDENTS */}
+          {showPublishModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+              <div className="glass-panel" style={{ width: '100%', maxWidth: '520px', borderRadius: '16px', padding: '26px', border: '1px solid rgba(16, 185, 129, 0.4)', animation: 'scaleUp 0.2s ease-out' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Send size={24} color="#10b981" />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700' }}>Publish Results to Students?</h3>
+                    <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-dim)' }}>Student Portal Visibility</p>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: '0.92rem', color: 'var(--text-bright)', lineHeight: '1.6', marginBottom: '18px' }}>
+                  You are about to publish the evaluated scores and AI reasoning for <strong>"{currentAssignment?.title}"</strong>.
+                  <br />
+                  <span style={{ fontSize: '0.84rem', color: 'var(--accent-cyan)', display: 'block', marginTop: '8px' }}>
+                    All enrolled students will immediately be able to view their marks and AI feedback breakdown on their classwork dashboard.
+                  </span>
+                </p>
+
+                <div style={{ display: 'flex', gap: '14px', padding: '12px 16px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '10px', marginBottom: '22px', fontSize: '0.84rem' }}>
+                  <div><strong>Graded:</strong> <span style={{ color: '#4ade80' }}>{evalStats.graded}</span> / {evalStats.total}</div>
+                  <div style={{ color: 'var(--text-dim)' }}>•</div>
+                  <div><strong>Flagged:</strong> <span style={{ color: '#f87171' }}>{evalStats.flagged}</span></div>
+                  <div style={{ color: 'var(--text-dim)' }}>•</div>
+                  <div><strong>Pending:</strong> <span style={{ color: '#fbbf24' }}>{evalStats.pending}</span></div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                  <button onClick={() => setShowPublishModal(false)} disabled={publishingResults} className="btn-ghost" style={{ padding: '8px 16px', fontSize: '0.86rem' }}>
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handlePublishResults(true)}
+                    disabled={publishingResults}
+                    className="btn-primary"
+                    style={{ padding: '8px 22px', fontSize: '0.86rem', background: 'linear-gradient(135deg, #10b981, #06b6d4)', borderColor: '#10b981', fontWeight: '700' }}
+                  >
+                    {publishingResults ? 'Publishing...' : 'Yes, Publish Results'}
                   </button>
                 </div>
               </div>

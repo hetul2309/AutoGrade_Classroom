@@ -406,6 +406,7 @@ def format_assignment_response(a: Assignment, is_admin: bool = True) -> Assignme
         plagiarism_policy=a.plagiarism_policy if is_admin else None,
         max_marks=a.max_marks,
         deadline=a.deadline,
+        results_published=a.results_published,
         attachment_name=a.attachment_name,
         has_attachment=has_att,
         created_at=a.created_at,
@@ -837,24 +838,74 @@ async def get_my_grades(
         elif fname and fname.startswith(f"student_{sub.student_id}_"):
             fname = fname[len(f"student_{sub.student_id}_"):]
 
+        is_published = bool(sub.assignment and sub.assignment.results_published)
         views.append(
             StudentGradeView(
                 submission_id=sub.id,
                 assignment_id=sub.assignment_id,
                 assignment_title=sub.assignment.title if sub.assignment else "Unknown Assignment",
                 file_name=fname,
-                status=sub.status.value,
-                marks=grade.marks if grade else None,
-                max_marks=grade.max_marks if grade else None,
-                reasoning_text=grade.reasoning_text if grade else None,
+                status=sub.status.value if is_published else "pending",
+                marks=grade.marks if (grade and is_published) else None,
+                max_marks=grade.max_marks if (grade and is_published) else None,
+                reasoning_text=grade.reasoning_text if (grade and is_published) else None,
                 submitted_at=sub.submitted_at,
-                graded_at=grade.graded_at if grade else None,
+                graded_at=grade.graded_at if (grade and is_published) else None,
             )
         )
     return views
 
 
 # ── Admin Endpoints ───────────────────────────────────────────────────────────
+
+@app.post("/admin/assignments/{id}/publish-results", response_model=AssignmentResponse, tags=["Admin"])
+async def publish_assignment_results(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """
+    Teacher publishes evaluated grades and AI feedback to students for an assignment.
+    """
+    assignment = await session.get(Assignment, id)
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    if assignment.class_id:
+        target_class = await session.get(Class, assignment.class_id)
+        if target_class and target_class.teacher_id != admin_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+
+    assignment.results_published = True
+    await session.commit()
+    await session.refresh(assignment)
+    logger.info("Admin %s published results for assignment id=%d ('%s')", admin_user.name, assignment.id, assignment.title)
+    return format_assignment_response(assignment, is_admin=True)
+
+
+@app.post("/admin/assignments/{id}/unpublish-results", response_model=AssignmentResponse, tags=["Admin"])
+async def unpublish_assignment_results(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """
+    Teacher unpublishes grades and AI feedback to students for an assignment.
+    """
+    assignment = await session.get(Assignment, id)
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    if assignment.class_id:
+        target_class = await session.get(Class, assignment.class_id)
+        if target_class and target_class.teacher_id != admin_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+
+    assignment.results_published = False
+    await session.commit()
+    await session.refresh(assignment)
+    logger.info("Admin %s unpublished results for assignment id=%d ('%s')", admin_user.name, assignment.id, assignment.title)
+    return format_assignment_response(assignment, is_admin=True)
 
 @app.get(
     "/admin/assignments/{id}/grades",

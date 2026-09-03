@@ -126,6 +126,18 @@ export async function recheckSubmissionApi(submissionId) {
   });
 }
 
+export async function publishAssignmentResultsApi(assignmentId) {
+  return apiRequest(`/admin/assignments/${assignmentId}/publish-results`, {
+    method: 'POST',
+  });
+}
+
+export async function unpublishAssignmentResultsApi(assignmentId) {
+  return apiRequest(`/admin/assignments/${assignmentId}/unpublish-results`, {
+    method: 'POST',
+  });
+}
+
 export async function createAssignmentApi(assignmentData) {
   return apiRequest('/admin/assignments', {
     method: 'POST',

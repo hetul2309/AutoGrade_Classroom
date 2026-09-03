@@ -155,6 +155,10 @@ class Assignment(Base):
     )
     max_marks: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    results_published: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False,
+        comment="Controls whether evaluated results/grades are visible to students"
+    )
     
     # Handout attachment for students (PDF / file)
     attachment_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
