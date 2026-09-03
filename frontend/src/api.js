@@ -183,10 +183,11 @@ export async function createClassAssignmentApi(classId, formData) {
   });
 }
 
-export async function updateAssignmentApi(assignmentId, formData) {
+export async function updateAssignmentApi(assignmentId, data) {
+  const isFormData = data instanceof FormData;
   return apiRequest(`/assignments/${assignmentId}`, {
     method: 'PATCH',
-    body: formData, // FormData with updated title, description, rubric_text, max_marks, deadline, attachment
+    body: isFormData ? data : JSON.stringify(data),
   });
 }
 

@@ -29,6 +29,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Request,
     UploadFile,
     status,
 )
@@ -619,6 +620,87 @@ async def get_assignment(
     assignment = await session.get(Assignment, id)
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    return format_assignment_response(assignment)
+
+
+@app.patch("/assignments/{id}", response_model=AssignmentResponse, tags=["Assignments"])
+@app.put("/assignments/{id}", response_model=AssignmentResponse, tags=["Assignments"])
+async def update_assignment(
+    id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """
+    Updates assignment details (title, description, rubric_text, max_marks, deadline, attachment).
+    Supports both JSON payloads and multipart/form-data.
+    """
+    assignment = await session.get(Assignment, id)
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    if assignment.class_id:
+        target_class = await session.get(Class, assignment.class_id)
+        if target_class and target_class.teacher_id != admin_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only class teacher can edit assignment.")
+
+    content_type = request.headers.get("content-type", "").lower()
+
+    if "multipart/form-data" in content_type:
+        form_data = await request.form()
+        if "title" in form_data and form_data["title"]:
+            assignment.title = str(form_data["title"]).strip()
+        if "description" in form_data:
+            assignment.description = str(form_data["description"]).strip()
+        if "rubric_text" in form_data:
+            assignment.rubric_text = str(form_data["rubric_text"]).strip()
+        if "max_marks" in form_data and form_data["max_marks"]:
+            try:
+                assignment.max_marks = float(form_data["max_marks"])
+            except ValueError:
+                pass
+        if "deadline" in form_data and form_data["deadline"]:
+            try:
+                assignment.deadline = datetime.fromisoformat(str(form_data["deadline"]))
+            except ValueError:
+                pass
+        if "attachment" in form_data:
+            att = form_data["attachment"]
+            if hasattr(att, "filename") and att.filename:
+                upload_dir = Path(settings.UPLOAD_DIR) / f"assignment_{assignment.id}"
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                saved_path = upload_dir / att.filename
+                with open(saved_path, "wb") as buffer:
+                    shutil.copyfileobj(att.file, buffer)
+                assignment.attachment_path = str(saved_path.resolve())
+                assignment.attachment_name = att.filename
+    else:
+        # JSON body
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+
+        if "title" in body and body["title"]:
+            assignment.title = str(body["title"]).strip()
+        if "description" in body:
+            assignment.description = str(body["description"]).strip()
+        if "rubric_text" in body:
+            assignment.rubric_text = str(body["rubric_text"]).strip()
+        if "max_marks" in body and body["max_marks"] is not None:
+            try:
+                assignment.max_marks = float(body["max_marks"])
+            except ValueError:
+                pass
+        if "deadline" in body and body["deadline"]:
+            try:
+                assignment.deadline = datetime.fromisoformat(str(body["deadline"]))
+            except ValueError:
+                pass
+
+    await session.commit()
+    await session.refresh(assignment)
+    logger.info("Assignment id=%d updated: title='%s', rubric length=%d", assignment.id, assignment.title, len(assignment.rubric_text or ""))
     return format_assignment_response(assignment)
 
 
