@@ -829,7 +829,10 @@ async def get_my_grades(
     submissions = result.scalars().all()
 
     views: List[StudentGradeView] = []
+    submitted_ass_ids = set()
+
     for sub in submissions:
+        submitted_ass_ids.add(sub.assignment_id)
         grade = sub.grade
         fname = Path(sub.file_path).name if sub.file_path else None
         # Remove internal prefix if formatted like 'assignment_74_202401002_...'
@@ -853,6 +856,33 @@ async def get_my_grades(
                 graded_at=grade.graded_at if (grade and is_published) else None,
             )
         )
+
+    # Find assignments in classes the student is enrolled in where they did NOT submit
+    class_ass_stmt = (
+        select(Assignment)
+        .join(ClassEnrollment, ClassEnrollment.class_id == Assignment.class_id)
+        .where(ClassEnrollment.student_id == current_user.id)
+    )
+    all_class_assignments = (await session.execute(class_ass_stmt)).scalars().all()
+
+    for ass in all_class_assignments:
+        if ass.id not in submitted_ass_ids:
+            is_published = bool(ass.results_published)
+            views.append(
+                StudentGradeView(
+                    submission_id=None,
+                    assignment_id=ass.id,
+                    assignment_title=ass.title,
+                    file_name=None,
+                    status="no_submission",
+                    marks=0.0 if is_published else None,
+                    max_marks=ass.max_marks if is_published else None,
+                    reasoning_text="No file uploaded (Not submitted)." if is_published else None,
+                    submitted_at=None,
+                    graded_at=None,
+                )
+            )
+
     return views
 
 
@@ -920,6 +950,7 @@ async def get_assignment_grades_for_admin(
     """
     Admin views full table of submissions and grades for a specific assignment:
     student details, marks, reasoning, flagged status, and manual edit audit trail.
+    Includes all enrolled students in the class (assigning 0 for unsubmitted).
     """
     # Verify assignment exists
     assignment = await session.get(Assignment, id)
@@ -934,31 +965,97 @@ async def get_assignment_grades_for_admin(
     )
     result = await session.execute(stmt)
     submissions = result.scalars().all()
+    sub_map = {sub.student_id: sub for sub in submissions}
 
     items: List[AdminGradeItem] = []
-    for sub in submissions:
-        grade = sub.grade
-        items.append(
-            AdminGradeItem(
-                grade_id=grade.id if grade else None,
-                submission_id=sub.id,
-                student_id=sub.student_id,
-                student_name=sub.student.name if sub.student else "Unknown",
-                student_email=sub.student.email if sub.student else "Unknown",
-                assignment_id=sub.assignment_id,
-                marks=grade.marks if grade else None,
-                max_marks=grade.max_marks if grade else None,
-                reasoning_text=grade.reasoning_text if grade else None,
-                flagged=grade.flagged if grade else False,
-                flag_reason=grade.flag_reason if grade else None,
-                submission_status=sub.status.value,
-                submitted_at=sub.submitted_at,
-                graded_at=grade.graded_at if grade else None,
-                manually_edited=grade.manually_edited if grade else False,
-                edited_by_admin_id=grade.edited_by_admin_id if grade else None,
-                edited_at=grade.edited_at if grade else None,
-            )
+    processed_student_ids = set()
+
+    # If assignment belongs to a class, fetch all enrolled students
+    if assignment.class_id:
+        enr_stmt = (
+            select(Student)
+            .join(ClassEnrollment, ClassEnrollment.student_id == Student.id)
+            .where(ClassEnrollment.class_id == assignment.class_id)
+            .order_by(Student.id.asc())
         )
+        enrolled_students = (await session.execute(enr_stmt)).scalars().all()
+
+        for student in enrolled_students:
+            processed_student_ids.add(student.id)
+            if student.id in sub_map:
+                sub = sub_map[student.id]
+                grade = sub.grade
+                items.append(
+                    AdminGradeItem(
+                        grade_id=grade.id if grade else None,
+                        submission_id=sub.id,
+                        student_id=sub.student_id,
+                        student_name=sub.student.name if sub.student else student.name,
+                        student_email=sub.student.email if sub.student else student.email,
+                        assignment_id=sub.assignment_id,
+                        marks=grade.marks if grade else None,
+                        max_marks=grade.max_marks if grade else None,
+                        reasoning_text=grade.reasoning_text if grade else None,
+                        flagged=grade.flagged if grade else False,
+                        flag_reason=grade.flag_reason if grade else None,
+                        submission_status=sub.status.value,
+                        submitted_at=sub.submitted_at,
+                        graded_at=grade.graded_at if grade else None,
+                        manually_edited=grade.manually_edited if grade else False,
+                        edited_by_admin_id=grade.edited_by_admin_id if grade else None,
+                        edited_at=grade.edited_at if grade else None,
+                    )
+                )
+            else:
+                # Student enrolled in class but has NOT submitted a notebook file
+                items.append(
+                    AdminGradeItem(
+                        grade_id=None,
+                        submission_id=None,
+                        student_id=student.id,
+                        student_name=student.name,
+                        student_email=student.email,
+                        assignment_id=assignment.id,
+                        marks=0.0,
+                        max_marks=assignment.max_marks,
+                        reasoning_text="No file uploaded (Not submitted).",
+                        flagged=False,
+                        flag_reason=None,
+                        submission_status="no_submission",
+                        submitted_at=None,
+                        graded_at=None,
+                        manually_edited=False,
+                        edited_by_admin_id=None,
+                        edited_at=None,
+                    )
+                )
+
+    # Any other submissions from students not currently enrolled
+    for sub in submissions:
+        if sub.student_id not in processed_student_ids:
+            grade = sub.grade
+            items.append(
+                AdminGradeItem(
+                    grade_id=grade.id if grade else None,
+                    submission_id=sub.id,
+                    student_id=sub.student_id,
+                    student_name=sub.student.name if sub.student else "Unknown",
+                    student_email=sub.student.email if sub.student else "Unknown",
+                    assignment_id=sub.assignment_id,
+                    marks=grade.marks if grade else None,
+                    max_marks=grade.max_marks if grade else None,
+                    reasoning_text=grade.reasoning_text if grade else None,
+                    flagged=grade.flagged if grade else False,
+                    flag_reason=grade.flag_reason if grade else None,
+                    submission_status=sub.status.value,
+                    submitted_at=sub.submitted_at,
+                    graded_at=grade.graded_at if grade else None,
+                    manually_edited=grade.manually_edited if grade else False,
+                    edited_by_admin_id=grade.edited_by_admin_id if grade else None,
+                    edited_at=grade.edited_at if grade else None,
+                )
+            )
+
     return items
 
 

@@ -131,7 +131,7 @@ class SubmissionResponse(BaseModel):
 
 class StudentGradeView(BaseModel):
     """View model for a student looking at their own submission and grade."""
-    submission_id: int
+    submission_id: Optional[int] = None
     assignment_id: int
     assignment_title: str
     file_name: Optional[str] = None
@@ -139,14 +139,14 @@ class StudentGradeView(BaseModel):
     marks: Optional[float] = None
     max_marks: Optional[float] = None
     reasoning_text: Optional[str] = None
-    submitted_at: datetime
+    submitted_at: Optional[datetime] = None
     graded_at: Optional[datetime] = None
 
 
 class AdminGradeItem(BaseModel):
     """Full view model for an admin inspecting assignment submissions and grades."""
     grade_id: Optional[int] = None
-    submission_id: int
+    submission_id: Optional[int] = None
     student_id: int
     student_name: str
     student_email: str
@@ -157,7 +157,7 @@ class AdminGradeItem(BaseModel):
     flagged: bool = False
     flag_reason: Optional[str] = None
     submission_status: str
-    submitted_at: datetime
+    submitted_at: Optional[datetime] = None
     graded_at: Optional[datetime] = None
     manually_edited: bool = False
     edited_by_admin_id: Optional[int] = None

@@ -338,26 +338,29 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   // Stats for evaluation tab
   const evalStats = useMemo(() => {
     const total = evalGrades.length;
-    const graded = evalGrades.filter((g) => g.marks !== null).length;
+    const graded = evalGrades.filter((g) => g.marks !== null && g.submission_status !== 'no_submission').length;
+    const noSubmission = evalGrades.filter((g) => g.submission_status === 'no_submission').length;
     const flagged = evalGrades.filter((g) => g.flagged).length;
     const pending = evalGrades.filter((g) => g.submission_status === 'pending').length;
     let avgMarks = 0;
     if (graded > 0) {
-      const sum = evalGrades.reduce((acc, g) => acc + (g.marks || 0), 0);
+      const sum = evalGrades.filter((g) => g.submission_status !== 'no_submission').reduce((acc, g) => acc + (g.marks || 0), 0);
       avgMarks = (sum / graded).toFixed(1);
     }
-    return { total, graded, flagged, pending, avgMarks };
+    return { total, graded, noSubmission, flagged, pending, avgMarks };
   }, [evalGrades]);
 
   const filteredGrades = useMemo(() => {
     return evalGrades.filter((g) => {
       const matchesSearch =
         g.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        g.student_email.toLowerCase().includes(searchQuery.toLowerCase());
+        g.student_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        String(g.student_id).includes(searchQuery);
       let matchesStatus = true;
       if (statusFilter === 'flagged') matchesStatus = g.flagged;
       else if (statusFilter === 'pending') matchesStatus = g.submission_status === 'pending';
-      else if (statusFilter === 'graded') matchesStatus = g.marks !== null;
+      else if (statusFilter === 'graded') matchesStatus = g.marks !== null && g.submission_status !== 'no_submission';
+      else if (statusFilter === 'no_submission') matchesStatus = g.submission_status === 'no_submission';
       return matchesSearch && matchesStatus;
     });
   }, [evalGrades, searchQuery, statusFilter]);
@@ -1235,111 +1238,122 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                     </td>
                   </tr>
                 ) : (
-                  filteredGrades.map((item) => (
-                    <tr key={item.submission_id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                      <td style={{ padding: '14px 18px' }}>
-                        <div style={{ fontWeight: '600' }}>{item.student_name}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                          ID: <span style={{ fontFamily: 'var(--font-mono)' }}>{item.student_id}</span> &bull; {item.student_email}
-                        </div>
-                      </td>
-
-                      <td style={{ padding: '14px 18px' }}>
-                        <span className={`badge badge-${item.submission_status}`}>
-                          {item.submission_status === 'processing' && (
-                            <div
-                              className="animate-spin"
-                              style={{
-                                width: '10px',
-                                height: '10px',
-                                border: '2px solid currentColor',
-                                borderTopColor: 'transparent',
-                                borderRadius: '50%',
-                                marginRight: '4px'
-                              }}
-                            />
-                          )}
-                          {item.submission_status}
-                        </span>
-                      </td>
-
-                      <td style={{ padding: '14px 18px', fontFamily: 'var(--font-mono)', fontWeight: '700' }}>
-                        {item.marks !== null ? (
-                          <span style={{ color: item.marks / item.max_marks >= 0.7 ? '#10b981' : item.marks === 0 ? '#ef4444' : '#f59e0b' }}>
-                            {item.marks} / {item.max_marks}
-                          </span>
-                        ) : (
-                          <span style={{ color: 'var(--text-dim)' }}>—</span>
-                        )}
-                      </td>
-
-                      <td style={{ padding: '14px 18px', maxWidth: '380px' }}>
-                        {item.reasoning_text ? (
-                          <div>
-                            {/* Copy case alert badge if flagged */}
-                            {item.flagged && (
-                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', padding: '3px 8px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: '700', marginBottom: '6px' }}>
-                                <AlertTriangle size={12} />
-                                <span>Copy Case Detected</span>
-                              </div>
-                            )}
-
-                            <div style={{ fontSize: '0.84rem', color: item.flagged ? '#fca5a5' : 'var(--text-bright)', lineHeight: '1.45' }}>
-                              {item.reasoning_text}
-                            </div>
-
-                            {/* Additional Flag Reason Inspector if available */}
-                            {item.flag_reason && item.flag_reason !== item.reasoning_text && (
-                              <div style={{ marginTop: '6px', fontSize: '0.78rem', color: 'var(--text-dim)', background: 'rgba(0,0,0,0.25)', padding: '6px 10px', borderRadius: '6px' }}>
-                                <strong>Details:</strong> {item.flag_reason}
-                              </div>
-                            )}
+                  filteredGrades.map((item) => {
+                    const isNoSub = item.submission_status === 'no_submission' || !item.submission_id;
+                    return (
+                      <tr key={item.submission_id || item.student_id} style={{ borderBottom: '1px solid var(--border-subtle)', background: isNoSub ? 'rgba(239, 68, 68, 0.02)' : 'transparent' }}>
+                        <td style={{ padding: '14px 18px' }}>
+                          <div style={{ fontWeight: '600' }}>{item.student_name}</div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                            ID: <span style={{ fontFamily: 'var(--font-mono)' }}>{item.student_id}</span> &bull; {item.student_email}
                           </div>
-                        ) : (
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Awaiting grading</span>
-                        )}
-                      </td>
+                        </td>
 
-                      {/* Action Buttons: Recheck & Edit */}
-                      <td style={{ padding: '14px 18px', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                          {/* Recheck Button */}
-                          <button
-                            onClick={() => setConfirmRecheckSub(item)}
-                            disabled={recheckingSubId === item.submission_id}
-                            className="btn-secondary"
-                            style={{
-                              padding: '6px 12px',
-                              fontSize: '0.78rem',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              borderColor: 'rgba(99, 102, 241, 0.4)',
-                              color: 'var(--primary)'
-                            }}
-                            title="Recheck this student submission with latest prompt & rubric"
-                          >
-                            {recheckingSubId === item.submission_id ? (
-                              <div className="animate-spin" style={{ width: '13px', height: '13px', border: '2px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%' }} />
-                            ) : (
-                              <RotateCcw size={13} />
-                            )}
-                            <span>Recheck</span>
-                          </button>
+                        <td style={{ padding: '14px 18px' }}>
+                          {isNoSub ? (
+                            <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '4px 10px', fontSize: '0.74rem' }}>
+                              No Submission
+                            </span>
+                          ) : (
+                            <span className={`badge badge-${item.submission_status}`}>
+                              {item.submission_status === 'processing' && (
+                                <div
+                                  className="animate-spin"
+                                  style={{
+                                    width: '10px',
+                                    height: '10px',
+                                    border: '2px solid currentColor',
+                                    borderTopColor: 'transparent',
+                                    borderRadius: '50%',
+                                    marginRight: '4px'
+                                  }}
+                                />
+                              )}
+                              {item.submission_status}
+                            </span>
+                          )}
+                        </td>
 
-                          {/* Edit Grade Button */}
-                          <button
-                            onClick={() => setEditingGrade(item)}
-                            className="btn-secondary"
-                            style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                          >
-                            <Edit3 size={13} />
-                            <span>Edit</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        <td style={{ padding: '14px 18px', fontFamily: 'var(--font-mono)', fontWeight: '700' }}>
+                          {item.marks !== null ? (
+                            <span style={{ color: item.marks / item.max_marks >= 0.7 ? '#10b981' : item.marks === 0 ? '#ef4444' : '#f59e0b' }}>
+                              {item.marks} / {item.max_marks}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-dim)' }}>—</span>
+                          )}
+                        </td>
+
+                        <td style={{ padding: '14px 18px', maxWidth: '380px' }}>
+                          {item.reasoning_text ? (
+                            <div>
+                              {/* Copy case alert badge if flagged */}
+                              {item.flagged && (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', padding: '3px 8px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: '700', marginBottom: '6px' }}>
+                                  <AlertTriangle size={12} />
+                                  <span>Copy Case Detected</span>
+                                </div>
+                              )}
+
+                              <div style={{ fontSize: '0.84rem', color: isNoSub ? '#f87171' : item.flagged ? '#fca5a5' : 'var(--text-bright)', lineHeight: '1.45' }}>
+                                {item.reasoning_text}
+                              </div>
+
+                              {/* Additional Flag Reason Inspector if available */}
+                              {item.flag_reason && item.flag_reason !== item.reasoning_text && (
+                                <div style={{ marginTop: '6px', fontSize: '0.78rem', color: 'var(--text-dim)', background: 'rgba(0,0,0,0.25)', padding: '6px 10px', borderRadius: '6px' }}>
+                                  <strong>Details:</strong> {item.flag_reason}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Awaiting grading</span>
+                          )}
+                        </td>
+
+                        {/* Action Buttons: Recheck & Edit */}
+                        <td style={{ padding: '14px 18px', textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                            {/* Recheck Button */}
+                            <button
+                              onClick={() => setConfirmRecheckSub(item)}
+                              disabled={isNoSub || recheckingSubId === item.submission_id}
+                              className="btn-secondary"
+                              style={{
+                                padding: '6px 12px',
+                                fontSize: '0.78rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                borderColor: 'rgba(99, 102, 241, 0.4)',
+                                color: isNoSub ? 'var(--text-dim)' : 'var(--primary)',
+                                opacity: isNoSub ? 0.4 : 1,
+                                cursor: isNoSub ? 'not-allowed' : 'pointer'
+                              }}
+                              title={isNoSub ? "Cannot recheck: student did not submit a notebook" : "Recheck this student submission with latest prompt & rubric"}
+                            >
+                              {recheckingSubId === item.submission_id ? (
+                                <div className="animate-spin" style={{ width: '13px', height: '13px', border: '2px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                              ) : (
+                                <RotateCcw size={13} />
+                              )}
+                              <span>Recheck</span>
+                            </button>
+
+                            {/* Edit Grade Button */}
+                            <button
+                              onClick={() => setEditingGrade(item)}
+                              className="btn-secondary"
+                              style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                            >
+                              <Edit3 size={13} />
+                              <span>Edit</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
