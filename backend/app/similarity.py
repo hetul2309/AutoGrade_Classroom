@@ -312,10 +312,17 @@ def _pair_score(
             total_weight += weight
             matched.append(best_match)
 
-    if total_weight == 0:
-        return 0.0, []
+    total_len_a = sum(len(src.strip()) for _, src in cells_a)
+    total_len_b = sum(len(src.strip()) for _, src in cells_b)
+    max_total = max(total_len_a, total_len_b, 1)
 
-    overall = weighted_score / total_weight
+    full_a = "\n\n".join(src.strip() for _, src in cells_a if src.strip())
+    full_b = "\n\n".join(src.strip() for _, src in cells_b if src.strip())
+    text_ratio = SequenceMatcher(None, full_a, full_b).ratio()
+
+    cell_coverage_score = weighted_score / max_total
+    overall = max(cell_coverage_score, text_ratio)
+
     return round(overall, 4), matched
 
 
