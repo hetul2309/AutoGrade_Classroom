@@ -15,6 +15,7 @@ import {
   getAssignmentAttachmentUrl
 } from '../api';
 import CreateClassAssignmentModal from '../components/CreateClassAssignmentModal';
+import EditAssignmentModal from '../components/EditAssignmentModal';
 import EditGradeModal from '../components/EditGradeModal';
 import SimilarityFlagModal from '../components/SimilarityFlagModal';
 import Toast from '../components/Toast';
@@ -43,6 +44,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
   // Modals & UI toggles
   const [showCreateAssignmentModal, setShowCreateAssignmentModal] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState(null);
   const [editingGrade, setEditingGrade] = useState(null);
   const [inspectingFlag, setInspectingFlag] = useState(null);
   const [expandedRubric, setExpandedRubric] = useState({});
@@ -120,6 +122,12 @@ export default function ClassDetailPage({ classId, user, onBack }) {
     if (!selectedAssignmentId) setSelectedAssignmentId(newAss.id);
     setShowCreateAssignmentModal(false);
     setToast({ message: `Assignment "${newAss.title}" published!`, type: 'success' });
+  };
+
+  const handleAssignmentUpdated = (updatedAss) => {
+    setAssignments((prev) => prev.map((a) => (a.id === updatedAss.id ? updatedAss : a)));
+    setEditingAssignment(null);
+    setToast({ message: `Assignment "${updatedAss.title}" updated successfully!`, type: 'success' });
   };
 
   const handleStudentUpload = async (assignmentId) => {
@@ -216,6 +224,14 @@ export default function ClassDetailPage({ classId, user, onBack }) {
           classId={classId}
           onClose={() => setShowCreateAssignmentModal(false)}
           onCreated={handleAssignmentCreated}
+        />
+      )}
+
+      {editingAssignment && (
+        <EditAssignmentModal
+          assignment={editingAssignment}
+          onClose={() => setEditingAssignment(null)}
+          onUpdated={handleAssignmentUpdated}
         />
       )}
 
@@ -427,7 +443,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                       {ass.description}
                     </p>
 
-                    {/* Action Row: Handout PDF + Rubric View */}
+                    {/* Action Row: Handout PDF + Rubric View + Teacher Edit */}
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
                       {ass.has_attachment && (
                         <a
@@ -450,6 +466,25 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                         <span>{expandedRubric[ass.id] ? 'Hide Grading Rubric' : 'View Grading Rubric'}</span>
                         {expandedRubric[ass.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </button>
+
+                      {isTeacher && (
+                        <button
+                          onClick={() => setEditingAssignment(ass)}
+                          className="btn-secondary"
+                          style={{
+                            fontSize: '0.84rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            border: '1px solid rgba(245, 158, 11, 0.4)',
+                            color: '#fbbf24',
+                            background: 'rgba(245, 158, 11, 0.08)'
+                          }}
+                        >
+                          <Edit3 size={15} />
+                          <span>Edit & Extend Deadline</span>
+                        </button>
+                      )}
                     </div>
 
                     {/* Collapsible Rubric */}

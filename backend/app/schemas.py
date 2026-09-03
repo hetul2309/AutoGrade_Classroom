@@ -83,6 +83,14 @@ class AssignmentCreateRequest(BaseModel):
     deadline: datetime
 
 
+class AssignmentUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    rubric_text: Optional[str] = None
+    max_marks: Optional[float] = None
+    deadline: Optional[datetime] = None
+
+
 class AssignmentResponse(BaseModel):
     id: int
     class_id: Optional[int] = None

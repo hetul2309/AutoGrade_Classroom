@@ -477,6 +477,78 @@ async def create_class_assignment(
     return format_assignment_response(assignment)
 
 
+@app.patch("/assignments/{id}", response_model=AssignmentResponse, tags=["Assignments"])
+@app.put("/assignments/{id}", response_model=AssignmentResponse, tags=["Assignments"])
+async def update_assignment(
+    id: int,
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    rubric_text: Optional[str] = Form(None),
+    max_marks: Optional[float] = Form(None),
+    deadline: Optional[str] = Form(None),
+    attachment: Optional[UploadFile] = File(None),
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """
+    Teacher updates an assignment:
+    - Extend or change the deadline
+    - Update instructions given to students (description)
+    - Update prompt / criteria given to LLM (rubric_text)
+    - Update max marks
+    - Optionally upload a new / replacement PDF handout
+    """
+    assignment = await session.get(Assignment, id)
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    if assignment.class_id:
+        target_class = await session.get(Class, assignment.class_id)
+        if target_class and target_class.teacher_id != admin_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the teacher who created this class can edit its assignments.",
+            )
+
+    if title is not None and title.strip():
+        assignment.title = title.strip()
+
+    if description is not None and description.strip():
+        assignment.description = description.strip()
+
+    if rubric_text is not None and rubric_text.strip():
+        assignment.rubric_text = rubric_text.strip()
+
+    if max_marks is not None and max_marks > 0:
+        assignment.max_marks = max_marks
+
+    if deadline is not None and deadline.strip():
+        try:
+            deadline_dt = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+            assignment.deadline = deadline_dt
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid deadline format. Please provide a valid ISO 8601 string.",
+            )
+
+    if attachment and attachment.filename:
+        handout_dir = Path("uploads/handouts") / f"assignment_{assignment.id}"
+        handout_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = os.path.basename(attachment.filename)
+        dest_path = handout_dir / safe_name
+        with open(dest_path, "wb") as f:
+            shutil.copyfileobj(attachment.file, f)
+        assignment.attachment_path = str(dest_path)
+        assignment.attachment_name = safe_name
+
+    await session.commit()
+    await session.refresh(assignment)
+
+    logger.info("Admin %s updated assignment id=%d (%s)", admin_user.name, assignment.id, assignment.title)
+    return format_assignment_response(assignment)
+
+
 @app.get("/assignments/{id}/attachment", tags=["Assignments"])
 async def download_assignment_attachment(
     id: int,

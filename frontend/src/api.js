@@ -171,6 +171,13 @@ export async function createClassAssignmentApi(classId, formData) {
   });
 }
 
+export async function updateAssignmentApi(assignmentId, formData) {
+  return apiRequest(`/assignments/${assignmentId}`, {
+    method: 'PATCH',
+    body: formData, // FormData with updated title, description, rubric_text, max_marks, deadline, attachment
+  });
+}
+
 export async function getClassStudentsApi(classId) {
   return apiRequest(`/classes/${classId}/students`);
 }
