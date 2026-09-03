@@ -114,6 +114,18 @@ export async function triggerGradingApi(assignmentId, direct = false) {
   });
 }
 
+export async function recheckAllAssignmentApi(assignmentId) {
+  return apiRequest(`/admin/assignments/${assignmentId}/trigger-grading?direct=true&recheck_all=true`, {
+    method: 'POST',
+  });
+}
+
+export async function recheckSubmissionApi(submissionId) {
+  return apiRequest(`/admin/submissions/${submissionId}/recheck`, {
+    method: 'POST',
+  });
+}
+
 export async function createAssignmentApi(assignmentData) {
   return apiRequest('/admin/assignments', {
     method: 'POST',

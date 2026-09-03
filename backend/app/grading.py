@@ -163,11 +163,12 @@ _GRADE_TOOL: dict[str, Any] = {
 
 def _build_system_prompt() -> str:
     return (
-        "You are an expert machine learning teaching assistant grading student "
-        "lab assignments. You are fair, precise, and constructive. "
-        "You grade based solely on the provided rubric and the student's actual work. "
-        "You do not penalise for stylistic choices not mentioned in the rubric. "
-        "You MUST call the submit_grade tool to return your grading decision."
+        "You are an expert, concise computer science teaching assistant grading student Jupyter notebooks.\n"
+        "Your evaluation must be objective, fair, and direct based solely on the provided rubric.\n\n"
+        "CRITICAL RULES:\n"
+        "1. KEEP REASONING CONCISE: Provide at most 2 to 3 short sentences or concise bullet points total explaining marks awarded. Do NOT write long or repetitive essays.\n"
+        "2. COPY / SIMILARITY CASES: If a similarity flag is provided indicating a copy case between students, flag=true, and you MUST explicitly state in the reasoning: 'Flagged for copy case: [X]% code match with student [Student ID] ([Student Email])'. Award 0 marks for copy cases.\n"
+        "3. Output strict JSON matching the submit_grade schema."
     )
 
 
@@ -180,28 +181,26 @@ def _build_user_prompt(
 ) -> str:
     parts: list[str] = []
 
-    parts.append("## Assignment Task\n" + task_description.strip())
-    parts.append(f"## Grading Rubric (total: {max_marks} marks)\n" + rubric.strip())
+    parts.append("## Assignment Task Description\n" + task_description.strip())
+    parts.append(f"## Grading Rubric (Total: {max_marks} marks)\n" + rubric.strip())
 
     if similarity_flag:
         parts.append(
-            "## ⚠️ Similarity Flag (Pre-computed)\n"
-            f"{similarity_flag.explanation}\n"
-            f"Overall similarity score: {round(similarity_flag.overall_score * 100, 1)}%\n"
-            "You MUST set flagged=true and copy this explanation into flag_reason."
+            "## ⚠️ PLAGIARISM / COPY CASE DETECTED (Pre-computed AST & Token Match)\n"
+            f"- Details: {similarity_flag.explanation}\n"
+            f"- Similarity Score: {round(similarity_flag.overall_score * 100, 1)}%\n"
+            "- Instruction: You MUST set flagged=true, copy the explanation to flag_reason, and explicitly state in your concise reasoning the matched student's ID and Email."
         )
     else:
         parts.append(
             "## Similarity Check\n"
-            "No similarity flag was raised for this submission. Set flagged=false."
+            "No similarity flag detected. Set flagged=false."
         )
 
-    parts.append("## Student Submission\n" + notebook_text.strip())
+    parts.append("## Student Notebook Submission\n" + notebook_text.strip())
     parts.append(
-        "## Instructions\n"
-        "Grade the student's submission against the rubric above. "
-        "Call submit_grade with marks, max_marks, a detailed reasoning, "
-        "and the correct flagged/flag_reason values."
+        "## Grading Action\n"
+        "Evaluate the submission and call submit_grade with marks, max_marks, concise reasoning (2-3 sentences max), and flag status."
     )
 
     return "\n\n---\n\n".join(parts)
@@ -246,31 +245,39 @@ def grade_with_gemini(
     )
 
     import time
+    models_to_try = [model]
+    for alt in ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.5-flash"]:
+        if alt not in models_to_try:
+            models_to_try.append(alt)
+
     response = None
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            client = genai.Client(api_key=key)
-            response = client.models.generate_content(
-                model=model,
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    response_mime_type="application/json",
-                    response_schema=GeminiGradeSchema,
-                    temperature=0.2,
-                ),
-            )
+    last_err = None
+    client = genai.Client(api_key=key)
+
+    for m in models_to_try:
+        for attempt in range(2):
+            try:
+                response = client.models.generate_content(
+                    model=m,
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        response_mime_type="application/json",
+                        response_schema=GeminiGradeSchema,
+                        temperature=0.2,
+                    ),
+                )
+                model = m
+                break
+            except Exception as exc:
+                last_err = exc
+                logger.warning("Gemini model %s attempt %d error: %s", m, attempt + 1, exc)
+                time.sleep(2.0)
+        if response is not None:
             break
-        except Exception as exc:
-            err_str = str(exc)
-            if attempt < max_retries - 1 and ("10054" in err_str or "connection" in err_str.lower() or "429" in err_str or "timeout" in err_str.lower()):
-                logger.warning("Gemini transient network error on attempt %d: %s. Retrying in %.1fs...", attempt + 1, exc, 2.5 * (attempt + 1))
-                time.sleep(2.5 * (attempt + 1))
-                continue
-            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                raise GradingAPIError(f"Gemini free rate limit reached (15 RPM): {exc}") from exc
-            raise GradingAPIError(f"Gemini API error: {exc}") from exc
+
+    if response is None:
+        raise GradingAPIError(f"All Gemini models failed: {last_err}")
 
     raw_text = getattr(response, "text", "") or ""
     if not raw_text.strip():

@@ -41,7 +41,7 @@ from app.grading import (
     _parse_grade_result,
     grade_with_gemini,
 )
-from app.models import Assignment, Grade, Submission, SubmissionStatus
+from app.models import Assignment, Grade, Student, Submission, SubmissionStatus
 from app.notebook_processing import process_notebook
 from app.similarity import SimilarityFlag, SubmissionText, find_similar_pairs
 
@@ -226,12 +226,52 @@ async def similarity_check_node(state: PipelineState) -> Dict[str, Any]:
     flags = find_similar_pairs(valid_subs, threshold=0.75)
     logger.info("Similarity check found %d flagged pair(s)", len(flags))
 
-    # Map flags to submissions (if a submission is involved in multiple flags, keep the highest score)
+    # Look up student details for rich flag explanations
+    student_info_map = {}
+    async with AsyncSessionLocal() as session:
+        for s in valid_subs:
+            st = await session.get(Student, s.student_id)
+            if st:
+                student_info_map[s.student_id] = {"name": st.name, "email": st.email}
+
+    # Map customized flags to each submission with partner student ID and email
     flag_map: Dict[int, SimilarityFlag] = {}
     for flag in flags:
-        for sub_id in (flag.submission_id_a, flag.submission_id_b):
-            if sub_id not in flag_map or flag.overall_score > flag_map[sub_id].overall_score:
-                flag_map[sub_id] = flag
+        stu_a = student_info_map.get(flag.student_id_a, {"name": "Student A", "email": f"{flag.student_id_a}@dau.ac.in"})
+        stu_b = student_info_map.get(flag.student_id_b, {"name": "Student B", "email": f"{flag.student_id_b}@dau.ac.in"})
+
+        expl_for_a = (
+            f"Code match of {flag.overall_score * 100:.1f}% detected with Student ID {flag.student_id_b} "
+            f"({stu_b['name']}, {stu_b['email']}) across {len(flag.matched_cells)} cell(s)."
+        )
+        flag_a = SimilarityFlag(
+            student_id_a=flag.student_id_a,
+            student_id_b=flag.student_id_b,
+            submission_id_a=flag.submission_id_a,
+            submission_id_b=flag.submission_id_b,
+            overall_score=flag.overall_score,
+            matched_cells=flag.matched_cells,
+            explanation=expl_for_a,
+        )
+
+        expl_for_b = (
+            f"Code match of {flag.overall_score * 100:.1f}% detected with Student ID {flag.student_id_a} "
+            f"({stu_a['name']}, {stu_a['email']}) across {len(flag.matched_cells)} cell(s)."
+        )
+        flag_b = SimilarityFlag(
+            student_id_a=flag.student_id_a,
+            student_id_b=flag.student_id_b,
+            submission_id_a=flag.submission_id_a,
+            submission_id_b=flag.submission_id_b,
+            overall_score=flag.overall_score,
+            matched_cells=flag.matched_cells,
+            explanation=expl_for_b,
+        )
+
+        if flag.submission_id_a not in flag_map or flag.overall_score > flag_map[flag.submission_id_a].overall_score:
+            flag_map[flag.submission_id_a] = flag_a
+        if flag.submission_id_b not in flag_map or flag.overall_score > flag_map[flag.submission_id_b].overall_score:
+            flag_map[flag.submission_id_b] = flag_b
 
     updated_subs: List[SubmissionItem] = []
     for sub in submissions:
@@ -327,7 +367,7 @@ async def submit_batch_node(state: PipelineState) -> Dict[str, Any]:
         logger.info("Executing batch grading via Google Gemini for %d submissions...", len(submissions))
         raw_results = []
         raw_model = state.get("model")
-        gemini_model = raw_model if (raw_model and "gemini" in raw_model) else (settings.GEMINI_MODEL or "gemini-2.5-flash")
+        gemini_model = raw_model if (raw_model and "gemini" in raw_model) else (settings.GEMINI_MODEL or "gemini-3.5-flash")
         rubric = state.get("rubric_text", "")
         task_desc = state.get("assignment_description", "")
         max_marks = state.get("max_marks", 100.0)

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   ArrowLeft, BookOpen, Users, Cpu, Plus, Copy, Check, FileDown,
   Upload, Clock, CheckCircle2, AlertTriangle, Play, Sparkles,
-  ChevronDown, ChevronUp, Edit3, Eye, FileText, Calendar, RefreshCw
+  ChevronDown, ChevronUp, Edit3, Eye, FileText, Calendar, RefreshCw,
+  RotateCw, RotateCcw, Save, X, HelpCircle
 } from 'lucide-react';
 import {
   getClassDetailsApi,
@@ -10,6 +11,9 @@ import {
   getClassStudentsApi,
   getAdminAssignmentGradesApi,
   triggerGradingApi,
+  recheckAllAssignmentApi,
+  recheckSubmissionApi,
+  updateAssignmentApi,
   uploadSubmissionApi,
   getMyGradesApi,
   getAssignmentAttachmentUrl
@@ -41,6 +45,18 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   const [directMode, setDirectMode] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  // Prompt & Rubric editing state in Evaluation tab
+  const [editingPromptRubric, setEditingPromptRubric] = useState(false);
+  const [promptDesc, setPromptDesc] = useState('');
+  const [promptRubric, setPromptRubric] = useState('');
+  const [savingPrompt, setSavingPrompt] = useState(false);
+
+  // Recheck single & all states
+  const [recheckingSubId, setRecheckingSubId] = useState(null);
+  const [confirmRecheckSub, setConfirmRecheckSub] = useState(null);
+  const [confirmRecheckAll, setConfirmRecheckAll] = useState(false);
+  const [recheckingAll, setRecheckingAll] = useState(false);
 
   // Modals & UI toggles
   const [showCreateAssignmentModal, setShowCreateAssignmentModal] = useState(false);
@@ -148,6 +164,65 @@ export default function ClassDetailPage({ classId, user, onBack }) {
       setToast({ message: err.message || 'Upload failed', type: 'error' });
     } finally {
       setUploadSubmitting(false);
+    }
+  };
+
+  const currentAssignment = useMemo(() => {
+    return assignments.find((a) => a.id === selectedAssignmentId) || null;
+  }, [assignments, selectedAssignmentId]);
+
+  useEffect(() => {
+    if (currentAssignment) {
+      setPromptDesc(currentAssignment.description || '');
+      setPromptRubric(currentAssignment.rubric_text || '');
+      setEditingPromptRubric(false);
+    }
+  }, [currentAssignment?.id, currentAssignment?.description, currentAssignment?.rubric_text]);
+
+  const handleSavePromptRubric = async () => {
+    if (!selectedAssignmentId) return;
+    setSavingPrompt(true);
+    try {
+      const updated = await updateAssignmentApi(selectedAssignmentId, {
+        description: promptDesc,
+        rubric_text: promptRubric,
+      });
+      setAssignments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      setEditingPromptRubric(false);
+      setToast({ message: 'Assignment Description & LLM Rubric updated successfully!', type: 'success' });
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to save prompt/rubric', type: 'error' });
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
+
+  const handleRecheckSingle = async (submissionId) => {
+    setConfirmRecheckSub(null);
+    setRecheckingSubId(submissionId);
+    try {
+      const updatedGrade = await recheckSubmissionApi(submissionId);
+      setToast({ message: `Re-evaluated notebook for ${updatedGrade.student_name}!`, type: 'success' });
+      await loadEvalGrades(selectedAssignmentId);
+    } catch (err) {
+      setToast({ message: err.message || 'Recheck failed', type: 'error' });
+    } finally {
+      setRecheckingSubId(null);
+    }
+  };
+
+  const handleRecheckAll = async () => {
+    setConfirmRecheckAll(false);
+    if (!selectedAssignmentId) return;
+    setRecheckingAll(true);
+    try {
+      await recheckAllAssignmentApi(selectedAssignmentId);
+      setToast({ message: 'Recheck completed for all student submissions using latest rubric!', type: 'success' });
+      await loadEvalGrades(selectedAssignmentId);
+    } catch (err) {
+      setToast({ message: err.message || 'Recheck all failed', type: 'error' });
+    } finally {
+      setRecheckingAll(false);
     }
   };
 
@@ -561,14 +636,14 @@ export default function ClassDetailPage({ classId, user, onBack }) {
         </div>
       )}
 
-      {/* TAB 2: NOTEBOOK EVALUATION & GRADING (TA ONLY) */}
+      {/* TAB 2: NOTEBOOK EVALUATION & GRADING (TEACHER ONLY) */}
       {activeTab === 'evaluation' && isTeacher && (
         <div>
-          {/* Assignment Selector Bar */}
+          {/* Assignment Selector & Global Actions Bar */}
           <div className="glass-panel" style={{ padding: '20px 24px', borderRadius: '14px', marginBottom: '24px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <label style={{ fontSize: '0.88rem', fontWeight: '600', color: 'var(--text-muted)' }}>
-                Select Assignment to Evaluate:
+                Select Assignment:
               </label>
               <select
                 value={selectedAssignmentId || ''}
@@ -582,29 +657,50 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                   </option>
                 ))}
               </select>
-              <button onClick={() => loadEvalGrades(selectedAssignmentId)} className="btn-secondary" title="Refresh">
+              <button onClick={() => loadEvalGrades(selectedAssignmentId)} className="btn-secondary" title="Refresh Evaluation Table">
                 <RefreshCw size={16} className={evalLoading ? 'animate-spin' : ''} />
               </button>
             </div>
 
-            {/* Trigger Grading Controls */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={directMode}
-                  onChange={(e) => setDirectMode(e.target.checked)}
-                  style={{ accentColor: '#6366f1' }}
-                />
-                <span>Direct Execution (Instant)</span>
-              </label>
+            {/* Evaluation Action Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              {/* Recheck All Button */}
+              <button
+                onClick={() => setConfirmRecheckAll(true)}
+                disabled={recheckingAll || evalGrades.length === 0}
+                className="btn-secondary"
+                style={{
+                  padding: '9px 18px',
+                  fontSize: '0.88rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  borderColor: 'rgba(99, 102, 241, 0.4)',
+                  background: 'rgba(99, 102, 241, 0.12)',
+                  color: 'var(--primary)'
+                }}
+                title="Re-evaluate all student submissions using the latest Prompt & Rubric"
+              >
+                {recheckingAll ? (
+                  <>
+                    <div className="animate-spin" style={{ width: '15px', height: '15px', border: '2px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                    <span>Rechecking All...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCw size={16} />
+                    <span>Recheck All (Latest Rubric)</span>
+                  </>
+                )}
+              </button>
 
+              {/* Trigger Grading Button for Pending Submissions */}
               <button
                 id="trigger-grading-class-btn"
                 onClick={handleTriggerGrading}
                 disabled={triggering || evalStats.pending === 0}
                 className="btn-primary"
-                style={{ padding: '9px 18px', fontSize: '0.88rem' }}
+                style={{ padding: '9px 18px', fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
               >
                 {triggering ? (
                   <>
@@ -614,12 +710,130 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                 ) : (
                   <>
                     <Play size={16} />
-                    <span>Trigger Grading ({evalStats.pending} pending)</span>
+                    <span>Grade Pending ({evalStats.pending})</span>
                   </>
                 )}
               </button>
             </div>
           </div>
+
+          {/* EDITABLE PROMPT & RUBRIC CARD */}
+          {currentAssignment && (
+            <div className="glass-panel" style={{ padding: '22px 24px', borderRadius: '14px', marginBottom: '24px', border: '1px solid rgba(99, 102, 241, 0.25)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Sparkles size={18} color="var(--primary)" />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-bright)' }}>
+                      LLM Grading Prompt & Rubric
+                    </h3>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                      Used as direct instructions for automated AI notebook evaluation
+                    </span>
+                  </div>
+                </div>
+
+                {/* Edit / Save Actions for Prompt & Rubric */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {!editingPromptRubric ? (
+                    <button
+                      onClick={() => setEditingPromptRubric(true)}
+                      className="btn-secondary"
+                      style={{ padding: '7px 14px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Edit3 size={14} />
+                      <span>Edit Prompt & Rubric</span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => {
+                          setPromptDesc(currentAssignment.description || '');
+                          setPromptRubric(currentAssignment.rubric_text || '');
+                          setEditingPromptRubric(false);
+                        }}
+                        disabled={savingPrompt}
+                        className="btn-ghost"
+                        style={{ padding: '7px 14px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <X size={14} />
+                        <span>Cancel</span>
+                      </button>
+                      <button
+                        onClick={handleSavePromptRubric}
+                        disabled={savingPrompt}
+                        className="btn-primary"
+                        style={{ padding: '7px 16px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        {savingPrompt ? (
+                          <>
+                            <div className="animate-spin" style={{ width: '14px', height: '14px', border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                            <span>Saving...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save size={14} />
+                            <span>Save Changes</span>
+                          </>
+                        )}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Prompt & Rubric Content Form / Display */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '18px' }}>
+                {/* 1. Assignment Description (Prompt to LLM) */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--accent-cyan)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FileText size={15} />
+                    <span>Lab Task Description (Teacher Prompt to LLM)</span>
+                  </div>
+
+                  {editingPromptRubric ? (
+                    <textarea
+                      value={promptDesc}
+                      onChange={(e) => setPromptDesc(e.target.value)}
+                      rows={5}
+                      className="form-input"
+                      style={{ width: '100%', fontSize: '0.84rem', fontFamily: 'inherit', resize: 'vertical' }}
+                      placeholder="Enter the lab task instructions and prompt for LLM evaluation..."
+                    />
+                  ) : (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', whiteSpace: 'pre-wrap', maxHeight: '160px', overflowY: 'auto' }}>
+                      {currentAssignment.description || 'No description provided.'}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Grading Rubric */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Sparkles size={15} />
+                    <span>Grading Rubric & Marks Criteria (Max: {currentAssignment.max_marks} marks)</span>
+                  </div>
+
+                  {editingPromptRubric ? (
+                    <textarea
+                      value={promptRubric}
+                      onChange={(e) => setPromptRubric(e.target.value)}
+                      rows={5}
+                      className="form-input"
+                      style={{ width: '100%', fontSize: '0.84rem', fontFamily: 'inherit', resize: 'vertical' }}
+                      placeholder="Enter rubric breakdown (e.g. 1. Model Implementation: 5 marks, 2. Visualization: 5 marks)..."
+                    />
+                  ) : (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', whiteSpace: 'pre-wrap', maxHeight: '160px', overflowY: 'auto' }}>
+                      {currentAssignment.rubric_text || 'No rubric text provided.'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Stats Row */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
@@ -632,7 +846,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
               <div style={{ fontSize: '1.8rem', fontWeight: '800', marginTop: '4px', color: '#10b981' }}>{evalStats.graded}</div>
             </div>
             <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '12px' }}>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Plagiarism Flags</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Copy Cases / Flags</div>
               <div style={{ fontSize: '1.8rem', fontWeight: '800', marginTop: '4px', color: '#f59e0b' }}>{evalStats.flagged}</div>
             </div>
             <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '12px' }}>
@@ -641,12 +855,12 @@ export default function ClassDetailPage({ classId, user, onBack }) {
             </div>
           </div>
 
-          {/* Plagiarism Alert Banner if any flagged */}
+          {/* Copy Cases Warning Banner if any flagged */}
           {evalStats.flagged > 0 && (
             <div style={{ padding: '14px 18px', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <AlertTriangle size={20} color="#f59e0b" />
               <span style={{ fontSize: '0.88rem', color: '#fbbf24' }}>
-                <strong>{evalStats.flagged} student submission(s)</strong> flagged for high structural or token code similarity. Click "Inspect Report" in the table below to review matched cell blocks.
+                <strong>{evalStats.flagged} student submission(s)</strong> flagged for high code similarity with fellow classmates. Partner Student IDs and Email IDs are shown in the AI reasoning below.
               </span>
             </div>
           )}
@@ -659,15 +873,14 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                   <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Student</th>
                   <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Status</th>
                   <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Marks</th>
-                  <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Plagiarism</th>
-                  <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>AI Reasoning</th>
+                  <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>AI Reasoning & Evaluation</th>
                   <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredGrades.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                       No submissions found for this assignment.
                     </td>
                   </tr>
@@ -676,7 +889,9 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                     <tr key={item.submission_id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                       <td style={{ padding: '14px 18px' }}>
                         <div style={{ fontWeight: '600' }}>{item.student_name}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>{item.student_email}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                          ID: <span style={{ fontFamily: 'var(--font-mono)' }}>{item.student_id}</span> &bull; {item.student_email}
+                        </div>
                       </td>
 
                       <td style={{ padding: '14px 18px' }}>
@@ -687,7 +902,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
                       <td style={{ padding: '14px 18px', fontFamily: 'var(--font-mono)', fontWeight: '700' }}>
                         {item.marks !== null ? (
-                          <span style={{ color: item.marks / item.max_marks >= 0.7 ? '#10b981' : '#f87171' }}>
+                          <span style={{ color: item.marks / item.max_marks >= 0.7 ? '#10b981' : item.marks === 0 ? '#ef4444' : '#f59e0b' }}>
                             {item.marks} / {item.max_marks}
                           </span>
                         ) : (
@@ -695,40 +910,25 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                         )}
                       </td>
 
-                      <td style={{ padding: '14px 18px' }}>
-                        {item.flagged ? (
-                          <button
-                            onClick={() => setInspectingFlag(item)}
-                            className="btn-ghost"
-                            style={{ padding: '4px 10px', fontSize: '0.75rem', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-                          >
-                            <AlertTriangle size={13} />
-                            <span>Inspect Match</span>
-                          </button>
-                        ) : (
-                          <span style={{ fontSize: '0.78rem', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            <CheckCircle2 size={14} />
-                            Clean
-                          </span>
-                        )}
-                      </td>
-
-                      <td style={{ padding: '14px 18px', maxWidth: '300px' }}>
+                      <td style={{ padding: '14px 18px', maxWidth: '380px' }}>
                         {item.reasoning_text ? (
                           <div>
-                            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {/* Copy case alert badge if flagged */}
+                            {item.flagged && (
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', padding: '3px 8px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: '700', marginBottom: '6px' }}>
+                                <AlertTriangle size={12} />
+                                <span>Copy Case Detected</span>
+                              </div>
+                            )}
+
+                            <div style={{ fontSize: '0.84rem', color: item.flagged ? '#fca5a5' : 'var(--text-bright)', lineHeight: '1.45' }}>
                               {item.reasoning_text}
                             </div>
-                            <button
-                              onClick={() => setExpandedReasoning((prev) => ({ ...prev, [item.submission_id]: !prev[item.submission_id] }))}
-                              className="btn-ghost"
-                              style={{ padding: 0, fontSize: '0.75rem', color: 'var(--accent-cyan)', marginTop: '4px' }}
-                            >
-                              {expandedReasoning[item.submission_id] ? 'Show less' : 'Read full AI critique'}
-                            </button>
-                            {expandedReasoning[item.submission_id] && (
-                              <div style={{ marginTop: '8px', padding: '10px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', fontSize: '0.8rem', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
-                                {item.reasoning_text}
+
+                            {/* Additional Flag Reason Inspector if available */}
+                            {item.flag_reason && item.flag_reason !== item.reasoning_text && (
+                              <div style={{ marginTop: '6px', fontSize: '0.78rem', color: 'var(--text-dim)', background: 'rgba(0,0,0,0.25)', padding: '6px 10px', borderRadius: '6px' }}>
+                                <strong>Details:</strong> {item.flag_reason}
                               </div>
                             )}
                           </div>
@@ -737,15 +937,43 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                         )}
                       </td>
 
+                      {/* Action Buttons: Recheck & Edit */}
                       <td style={{ padding: '14px 18px', textAlign: 'right' }}>
-                        <button
-                          onClick={() => setEditingGrade(item)}
-                          className="btn-secondary"
-                          style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                        >
-                          <Edit3 size={14} />
-                          <span>Edit</span>
-                        </button>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                          {/* Recheck Button */}
+                          <button
+                            onClick={() => setConfirmRecheckSub(item)}
+                            disabled={recheckingSubId === item.submission_id}
+                            className="btn-secondary"
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '0.78rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              borderColor: 'rgba(99, 102, 241, 0.4)',
+                              color: 'var(--primary)'
+                            }}
+                            title="Recheck this student submission with latest prompt & rubric"
+                          >
+                            {recheckingSubId === item.submission_id ? (
+                              <div className="animate-spin" style={{ width: '13px', height: '13px', border: '2px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                            ) : (
+                              <RotateCcw size={13} />
+                            )}
+                            <span>Recheck</span>
+                          </button>
+
+                          {/* Edit Grade Button */}
+                          <button
+                            onClick={() => setEditingGrade(item)}
+                            className="btn-secondary"
+                            style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <Edit3 size={13} />
+                            <span>Edit</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -753,6 +981,74 @@ export default function ClassDetailPage({ classId, user, onBack }) {
               </tbody>
             </table>
           </div>
+
+          {/* CONFIRMATION MODAL: SINGLE SUBMISSION RECHECK */}
+          {confirmRecheckSub && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+              <div className="glass-panel" style={{ width: '100%', maxWidth: '480px', borderRadius: '16px', padding: '24px', border: '1px solid rgba(99,102,241,0.3)', animation: 'scaleUp 0.2s ease-out' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <RotateCcw size={22} color="var(--primary)" />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700' }}>Confirm Recheck Submission</h3>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-dim)' }}>Re-evaluate with latest Prompt & Rubric</p>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-bright)', lineHeight: '1.6', marginBottom: '20px' }}>
+                  Are you sure you want to re-evaluate the assignment for student <strong>{confirmRecheckSub.student_name}</strong> (ID: {confirmRecheckSub.student_id})?
+                  <br />
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'block', marginTop: '6px' }}>
+                    The submission will be evaluated against the latest Assignment Description and Rubric criteria.
+                  </span>
+                </p>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                  <button onClick={() => setConfirmRecheckSub(null)} className="btn-ghost" style={{ padding: '8px 16px', fontSize: '0.86rem' }}>
+                    Cancel
+                  </button>
+                  <button onClick={() => handleRecheckSingle(confirmRecheckSub.submission_id)} className="btn-primary" style={{ padding: '8px 18px', fontSize: '0.86rem' }}>
+                    Yes, Recheck Assignment
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CONFIRMATION MODAL: RECHECK ALL SUBMISSIONS */}
+          {confirmRecheckAll && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+              <div className="glass-panel" style={{ width: '100%', maxWidth: '520px', borderRadius: '16px', padding: '26px', border: '1px solid rgba(245,158,11,0.4)', animation: 'scaleUp 0.2s ease-out' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <RotateCw size={24} color="#f59e0b" />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700' }}>Recheck All Submissions?</h3>
+                    <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-dim)' }}>Full Class Re-evaluation</p>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: '0.92rem', color: 'var(--text-bright)', lineHeight: '1.6', marginBottom: '22px' }}>
+                  This action will re-evaluate <strong>all {evalGrades.length} student submissions</strong> for <em>"{currentAssignment?.title}"</em> using the latest updated Prompt and Rubric.
+                  <br />
+                  <span style={{ fontSize: '0.84rem', color: '#fbbf24', display: 'block', marginTop: '8px' }}>
+                    All existing scores and AI reasoning will be re-computed and updated in the database.
+                  </span>
+                </p>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                  <button onClick={() => setConfirmRecheckAll(false)} className="btn-ghost" style={{ padding: '8px 16px', fontSize: '0.86rem' }}>
+                    Cancel
+                  </button>
+                  <button onClick={handleRecheckAll} className="btn-primary" style={{ padding: '8px 20px', fontSize: '0.86rem', background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
+                    Confirm Recheck All
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

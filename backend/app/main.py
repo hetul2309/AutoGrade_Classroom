@@ -12,6 +12,7 @@ Provides endpoints for:
 - Admin pipeline trigger (invoking Phase 5's LangGraph batch grading)
 """
 
+import asyncio
 import logging
 import os
 import shutil
@@ -33,7 +34,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import and_, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -894,6 +895,151 @@ async def edit_grade_manually(
 
 
 @app.post(
+    "/admin/submissions/{id}/recheck",
+    response_model=AdminGradeItem,
+    tags=["Admin"],
+)
+async def recheck_single_submission(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """
+    Rechecks a single student submission using the latest assignment instructions and grading rubric.
+    """
+    sub = await session.get(Submission, id)
+    if not sub:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+
+    assignment = await session.get(Assignment, sub.assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    # Verify teacher access
+    if assignment.class_id:
+        target_class = await session.get(Class, assignment.class_id)
+        if target_class and target_class.teacher_id != admin_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+
+    # 1. Preprocess notebook
+    from app.notebook_processing import process_notebook
+    from app.grading import grade_submission
+    from app.similarity import SubmissionText, find_similar_pairs
+
+    path = Path(sub.file_path)
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Notebook file not found at {sub.file_path}")
+
+    nb_result = process_notebook(path)
+
+    # 2. Check pairwise similarity against all other submissions in this assignment
+    other_subs_res = await session.execute(
+        select(Submission)
+        .where(Submission.assignment_id == sub.assignment_id, Submission.id != sub.id)
+    )
+    other_subs = other_subs_res.scalars().all()
+
+    sub_texts = [
+        SubmissionText(
+            student_id=sub.student_id,
+            submission_id=sub.id,
+            code_cells=[(c.index, c.source) for c in nb_result.processed_cells if c.cell_type == "code"]
+        )
+    ]
+    for os_sub in other_subs:
+        os_path = Path(os_sub.file_path)
+        if os_path.exists():
+            try:
+                os_nb = process_notebook(os_path)
+                sub_texts.append(
+                    SubmissionText(
+                        student_id=os_sub.student_id,
+                        submission_id=os_sub.id,
+                        code_cells=[(c.index, c.source) for c in os_nb.processed_cells if c.cell_type == "code"]
+                    )
+                )
+            except Exception:
+                pass
+
+    similarity_flag = None
+    if len(sub_texts) >= 2:
+        flags = find_similar_pairs(sub_texts, threshold=0.75)
+        for f in flags:
+            if f.submission_id_a == sub.id or f.submission_id_b == sub.id:
+                partner_stu_id = f.student_id_b if f.submission_id_a == sub.id else f.student_id_a
+                partner_student = await session.get(Student, partner_stu_id)
+                partner_email = partner_student.email if partner_student else f"{partner_stu_id}@dau.ac.in"
+                partner_name = partner_student.name if partner_student else "Student"
+
+                f.explanation = (
+                    f"Code match of {f.overall_score * 100:.1f}% detected with Student ID {partner_stu_id} "
+                    f"({partner_name}, {partner_email}) across {len(f.matched_cells)} cell(s)."
+                )
+                similarity_flag = f
+                break
+
+    # 3. Grade with LLM using latest rubric and task description
+    res = await asyncio.to_thread(
+        grade_submission,
+        rubric=assignment.rubric_text,
+        task_description=assignment.description,
+        notebook_text=nb_result.text,
+        similarity_flag=similarity_flag,
+        max_marks=assignment.max_marks,
+    )
+
+    # 4. Save to DB
+    grade_stmt = select(Grade).where(Grade.submission_id == sub.id)
+    grade_obj = (await session.execute(grade_stmt)).scalar_one_or_none()
+
+    if grade_obj:
+        grade_obj.marks = res.marks
+        grade_obj.max_marks = res.max_marks
+        grade_obj.reasoning_text = res.reasoning
+        grade_obj.flagged = res.flagged
+        grade_obj.flag_reason = res.flag_reason
+        grade_obj.graded_at = datetime.now(timezone.utc)
+        grade_obj.manually_edited = False
+    else:
+        grade_obj = Grade(
+            submission_id=sub.id,
+            marks=res.marks,
+            max_marks=res.max_marks,
+            reasoning_text=res.reasoning,
+            flagged=res.flagged,
+            flag_reason=res.flag_reason,
+            graded_at=datetime.now(timezone.utc),
+        )
+        session.add(grade_obj)
+
+    sub.status = SubmissionStatus.flagged if res.flagged else SubmissionStatus.graded
+    await session.commit()
+    await session.refresh(grade_obj)
+    await session.refresh(sub)
+
+    student = await session.get(Student, sub.student_id)
+    return AdminGradeItem(
+        grade_id=grade_obj.id,
+        submission_id=sub.id,
+        student_id=sub.student_id,
+        student_name=student.name if student else "Unknown",
+        student_email=student.email if student else "Unknown",
+        assignment_id=sub.assignment_id,
+        marks=grade_obj.marks,
+        max_marks=grade_obj.max_marks,
+        reasoning_text=grade_obj.reasoning_text,
+        flagged=grade_obj.flagged,
+        flag_reason=grade_obj.flag_reason,
+        submission_status=sub.status.value,
+        submitted_at=sub.submitted_at,
+        graded_at=grade_obj.graded_at,
+        manually_edited=grade_obj.manually_edited,
+        edited_by_admin_id=grade_obj.edited_by_admin_id,
+        edited_at=grade_obj.edited_at,
+    )
+
+
+@app.post(
     "/admin/assignments/{id}/trigger-grading",
     response_model=TriggerGradingResponse,
     tags=["Admin"],
@@ -901,6 +1047,7 @@ async def edit_grade_manually(
 async def trigger_grading_pipeline(
     id: int,
     direct: bool = False,
+    recheck_all: bool = False,
     background_tasks: BackgroundTasks = BackgroundTasks(),
     session: AsyncSession = Depends(get_db),
     admin_user: Student = Depends(require_admin),
@@ -909,10 +1056,19 @@ async def trigger_grading_pipeline(
     Triggers Phase 5's LangGraph batch grading pipeline for an assignment.
     Processes all pending submissions through preprocessing, similarity checking,
     batch LLM evaluation, and database persistence.
+    If recheck_all=True, resets all existing submissions to pending to re-evaluate them with latest prompt/rubric.
     """
     assignment = await session.get(Assignment, id)
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    if recheck_all:
+        await session.execute(
+            update(Submission)
+            .where(Submission.assignment_id == id)
+            .values(status=SubmissionStatus.pending)
+        )
+        await session.commit()
 
     # Count submissions ready to be graded (pending, processing, or errored)
     stmt = select(Submission).where(
@@ -924,7 +1080,7 @@ async def trigger_grading_pipeline(
 
     if count == 0:
         return TriggerGradingResponse(
-            message="No pending submissions found for this assignment.",
+            message="No submissions found to grade for this assignment.",
             assignment_id=id,
             status="idle",
             details={"pending_count": 0},
