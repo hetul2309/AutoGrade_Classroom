@@ -217,7 +217,10 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
     try {
       const updatedGrade = await recheckSubmissionApi(submissionId);
-      setToast({ message: `Re-evaluated notebook for ${updatedGrade.student_name}!`, type: 'success' });
+      setEvalGrades((prev) =>
+        prev.map((g) => (g.submission_id === submissionId ? updatedGrade : g))
+      );
+      setToast({ message: `Re-evaluated notebook for ${updatedGrade.student_name}! Status: Graded (${updatedGrade.marks}/${updatedGrade.max_marks})`, type: 'success' });
       await loadEvalGrades(selectedAssignmentId);
     } catch (err) {
       const errMsg = err.message || '';
