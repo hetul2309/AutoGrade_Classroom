@@ -57,6 +57,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   const [confirmRecheckSub, setConfirmRecheckSub] = useState(null);
   const [confirmRecheckAll, setConfirmRecheckAll] = useState(false);
   const [recheckingAll, setRecheckingAll] = useState(false);
+  const [quotaError, setQuotaError] = useState(null);
 
   // Modals & UI toggles
   const [showCreateAssignmentModal, setShowCreateAssignmentModal] = useState(false);
@@ -201,12 +202,32 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   const handleRecheckSingle = async (submissionId) => {
     setConfirmRecheckSub(null);
     setRecheckingSubId(submissionId);
+    setQuotaError(null);
+
+    // Immediately show 'processing' status badge on this student's row
+    setEvalGrades((prev) =>
+      prev.map((g) =>
+        g.submission_id === submissionId ? { ...g, submission_status: 'processing' } : g
+      )
+    );
+
     try {
       const updatedGrade = await recheckSubmissionApi(submissionId);
       setToast({ message: `Re-evaluated notebook for ${updatedGrade.student_name}!`, type: 'success' });
       await loadEvalGrades(selectedAssignmentId);
     } catch (err) {
-      setToast({ message: err.message || 'Recheck failed', type: 'error' });
+      const errMsg = err.message || '';
+      if (errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('429')) {
+        setQuotaError(errMsg);
+        setToast({
+          message: '⚠️ Daily free AI grading quota ended. Resets daily at 00:00 UTC (5:30 AM IST).',
+          type: 'error',
+          duration: 8000,
+        });
+      } else {
+        setToast({ message: errMsg || 'Recheck failed', type: 'error' });
+      }
+      await loadEvalGrades(selectedAssignmentId);
     } finally {
       setRecheckingSubId(null);
     }
@@ -216,12 +237,30 @@ export default function ClassDetailPage({ classId, user, onBack }) {
     setConfirmRecheckAll(false);
     if (!selectedAssignmentId) return;
     setRecheckingAll(true);
+    setQuotaError(null);
+
+    // Immediately show 'processing' status badge on ALL student rows
+    setEvalGrades((prev) =>
+      prev.map((g) => ({ ...g, submission_status: 'processing' }))
+    );
+
     try {
       await recheckAllAssignmentApi(selectedAssignmentId);
       setToast({ message: 'Recheck completed for all student submissions using latest rubric!', type: 'success' });
       await loadEvalGrades(selectedAssignmentId);
     } catch (err) {
-      setToast({ message: err.message || 'Recheck all failed', type: 'error' });
+      const errMsg = err.message || '';
+      if (errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('429')) {
+        setQuotaError(errMsg);
+        setToast({
+          message: '⚠️ Daily free AI grading quota ended across all models. Resets daily at 00:00 UTC (5:30 AM IST).',
+          type: 'error',
+          duration: 8000,
+        });
+      } else {
+        setToast({ message: errMsg || 'Recheck all failed', type: 'error' });
+      }
+      await loadEvalGrades(selectedAssignmentId);
     } finally {
       setRecheckingAll(false);
     }
@@ -230,6 +269,13 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   const handleTriggerGrading = async () => {
     if (!selectedAssignmentId) return;
     setTriggering(true);
+    setQuotaError(null);
+
+    // Immediately mark pending rows as processing
+    setEvalGrades((prev) =>
+      prev.map((g) => g.submission_status === 'pending' ? { ...g, submission_status: 'processing' } : g)
+    );
+
     try {
       const res = await triggerGradingApi(selectedAssignmentId, directMode);
       setToast({
@@ -238,7 +284,18 @@ export default function ClassDetailPage({ classId, user, onBack }) {
       });
       await loadEvalGrades(selectedAssignmentId);
     } catch (err) {
-      setToast({ message: err.message || 'Grading failed', type: 'error' });
+      const errMsg = err.message || '';
+      if (errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('429')) {
+        setQuotaError(errMsg);
+        setToast({
+          message: '⚠️ Daily free AI grading quota ended. Resets daily at 00:00 UTC (5:30 AM IST).',
+          type: 'error',
+          duration: 8000,
+        });
+      } else {
+        setToast({ message: errMsg || 'Grading failed', type: 'error' });
+      }
+      await loadEvalGrades(selectedAssignmentId);
     } finally {
       setTriggering(false);
     }
@@ -671,21 +728,33 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                 disabled={recheckingAll || evalGrades.length === 0}
                 className="btn-secondary"
                 style={{
-                  padding: '9px 18px',
+                  padding: '9px 20px',
                   fontSize: '0.88rem',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '8px',
-                  borderColor: 'rgba(99, 102, 241, 0.4)',
-                  background: 'rgba(99, 102, 241, 0.12)',
-                  color: 'var(--primary)'
+                  borderColor: 'rgba(99, 102, 241, 0.45)',
+                  background: recheckingAll ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.12)',
+                  color: 'var(--primary)',
+                  boxShadow: recheckingAll ? '0 0 16px rgba(99, 102, 241, 0.4)' : 'none',
+                  cursor: recheckingAll ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s ease',
                 }}
                 title="Re-evaluate all student submissions using the latest Prompt & Rubric"
               >
                 {recheckingAll ? (
                   <>
-                    <div className="animate-spin" style={{ width: '15px', height: '15px', border: '2px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%' }} />
-                    <span>Rechecking All...</span>
+                    <div
+                      className="animate-spin"
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        border: '2.5px solid var(--primary)',
+                        borderTopColor: 'transparent',
+                        borderRadius: '50%'
+                      }}
+                    />
+                    <span style={{ fontWeight: '700' }}>Re-evaluating All Submissions...</span>
                   </>
                 ) : (
                   <>
@@ -836,6 +905,28 @@ export default function ClassDetailPage({ classId, user, onBack }) {
             </div>
           )}
 
+          {/* Quota Exhaustion Alert Banner */}
+          {quotaError && (
+            <div style={{ padding: '16px 20px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '12px', marginBottom: '22px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                <AlertTriangle size={22} color="#ef4444" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  <div style={{ fontWeight: '700', color: '#f87171', fontSize: '0.96rem', marginBottom: '3px' }}>
+                    Daily AI Grading Quota Reached
+                  </div>
+                  <div style={{ fontSize: '0.84rem', color: 'var(--text-bright)', lineHeight: '1.45' }}>
+                    The daily request quota has been reached across available Google Gemini models.
+                    Free quotas automatically reset daily at <strong>00:00 UTC (5:30 AM IST)</strong>.
+                    You can also paste an alternative Gemini API key in your <code>.env</code> file.
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setQuotaError(null)} className="btn-ghost" style={{ padding: '4px 8px' }} title="Dismiss">
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
           {/* Stats Row */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
             <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '12px' }}>
@@ -897,6 +988,19 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
                       <td style={{ padding: '14px 18px' }}>
                         <span className={`badge badge-${item.submission_status}`}>
+                          {item.submission_status === 'processing' && (
+                            <div
+                              className="animate-spin"
+                              style={{
+                                width: '10px',
+                                height: '10px',
+                                border: '2px solid currentColor',
+                                borderTopColor: 'transparent',
+                                borderRadius: '50%',
+                                marginRight: '4px'
+                              }}
+                            />
+                          )}
                           {item.submission_status}
                         </span>
                       </td>

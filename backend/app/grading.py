@@ -285,6 +285,13 @@ def grade_with_gemini(
                 logger.warning("Gemini model %s failed: %s, trying next fallback candidate...", m, exc)
 
     if response is None:
+        last_err_str = str(last_err)
+        if "RESOURCE_EXHAUSTED" in last_err_str or "429" in last_err_str:
+            raise GradingAPIError(
+                "Daily free API quota exhausted across all AI models. "
+                "Quota resets daily at 00:00 UTC (5:30 AM IST). "
+                "You can also provide a fresh Gemini API key in your .env file."
+            )
         raise GradingAPIError(f"All Gemini models failed: {last_err}")
 
     raw_text = getattr(response, "text", "") or ""
