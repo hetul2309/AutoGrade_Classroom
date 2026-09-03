@@ -483,12 +483,7 @@ async def create_class_assignment(
 @app.put("/assignments/{id}", response_model=AssignmentResponse, tags=["Assignments"])
 async def update_assignment(
     id: int,
-    title: Optional[str] = Form(None),
-    description: Optional[str] = Form(None),
-    rubric_text: Optional[str] = Form(None),
-    max_marks: Optional[float] = Form(None),
-    deadline: Optional[str] = Form(None),
-    attachment: Optional[UploadFile] = File(None),
+    request: Request,
     session: AsyncSession = Depends(get_db),
     admin_user: Student = Depends(require_admin),
 ):
@@ -499,6 +494,7 @@ async def update_assignment(
     - Update prompt / criteria given to LLM (rubric_text)
     - Update max marks
     - Optionally upload a new / replacement PDF handout
+    Supports both JSON payloads and multipart/form-data.
     """
     assignment = await session.get(Assignment, id)
     if not assignment:
@@ -512,42 +508,78 @@ async def update_assignment(
                 detail="Only the teacher who created this class can edit its assignments.",
             )
 
-    if title is not None and title.strip():
-        assignment.title = title.strip()
+    content_type = request.headers.get("content-type", "").lower()
 
-    if description is not None and description.strip():
-        assignment.description = description.strip()
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        title = form.get("title")
+        description = form.get("description")
+        rubric_text = form.get("rubric_text")
+        max_marks = form.get("max_marks")
+        deadline = form.get("deadline")
+        attachment = form.get("attachment")
 
-    if rubric_text is not None and rubric_text.strip():
-        assignment.rubric_text = rubric_text.strip()
-
-    if max_marks is not None and max_marks > 0:
-        assignment.max_marks = max_marks
-
-    if deadline is not None and deadline.strip():
+        if title is not None and str(title).strip():
+            assignment.title = str(title).strip()
+        if description is not None:
+            assignment.description = str(description).strip()
+        if rubric_text is not None:
+            assignment.rubric_text = str(rubric_text).strip()
+        if max_marks is not None and str(max_marks).strip():
+            try:
+                assignment.max_marks = float(max_marks)
+            except ValueError:
+                pass
+        if deadline is not None and str(deadline).strip():
+            try:
+                assignment.deadline = datetime.fromisoformat(str(deadline).replace("Z", "+00:00"))
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid deadline format. Please provide a valid ISO 8601 string.",
+                )
+        if attachment and hasattr(attachment, "filename") and attachment.filename:
+            handout_dir = Path("uploads/handouts") / f"assignment_{assignment.id}"
+            handout_dir.mkdir(parents=True, exist_ok=True)
+            safe_name = os.path.basename(attachment.filename)
+            dest_path = handout_dir / safe_name
+            with open(dest_path, "wb") as f:
+                shutil.copyfileobj(attachment.file, f)
+            assignment.attachment_path = str(dest_path)
+            assignment.attachment_name = safe_name
+    else:
+        # JSON Payload
         try:
-            deadline_dt = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
-            assignment.deadline = deadline_dt
+            body = await request.json()
         except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid deadline format. Please provide a valid ISO 8601 string.",
-            )
+            body = {}
 
-    if attachment and attachment.filename:
-        handout_dir = Path("uploads/handouts") / f"assignment_{assignment.id}"
-        handout_dir.mkdir(parents=True, exist_ok=True)
-        safe_name = os.path.basename(attachment.filename)
-        dest_path = handout_dir / safe_name
-        with open(dest_path, "wb") as f:
-            shutil.copyfileobj(attachment.file, f)
-        assignment.attachment_path = str(dest_path)
-        assignment.attachment_name = safe_name
+        if "title" in body and body["title"] and str(body["title"]).strip():
+            assignment.title = str(body["title"]).strip()
+        if "description" in body and body["description"] is not None:
+            assignment.description = str(body["description"]).strip()
+        if "rubric_text" in body and body["rubric_text"] is not None:
+            assignment.rubric_text = str(body["rubric_text"]).strip()
+        if "max_marks" in body and body["max_marks"] is not None:
+            try:
+                assignment.max_marks = float(body["max_marks"])
+            except ValueError:
+                pass
+        if "deadline" in body and body["deadline"]:
+            try:
+                assignment.deadline = datetime.fromisoformat(str(body["deadline"]).replace("Z", "+00:00"))
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid deadline format. Please provide a valid ISO 8601 string.",
+                )
 
     await session.commit()
     await session.refresh(assignment)
-
-    logger.info("Admin %s updated assignment id=%d (%s)", admin_user.name, assignment.id, assignment.title)
+    logger.info(
+        "Admin %s updated assignment id=%d (%s): desc_len=%d, rubric_len=%d",
+        admin_user.name, assignment.id, assignment.title, len(assignment.description or ""), len(assignment.rubric_text or "")
+    )
     return format_assignment_response(assignment)
 
 
@@ -623,85 +655,6 @@ async def get_assignment(
     return format_assignment_response(assignment)
 
 
-@app.patch("/assignments/{id}", response_model=AssignmentResponse, tags=["Assignments"])
-@app.put("/assignments/{id}", response_model=AssignmentResponse, tags=["Assignments"])
-async def update_assignment(
-    id: int,
-    request: Request,
-    session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
-):
-    """
-    Updates assignment details (title, description, rubric_text, max_marks, deadline, attachment).
-    Supports both JSON payloads and multipart/form-data.
-    """
-    assignment = await session.get(Assignment, id)
-    if not assignment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
-
-    if assignment.class_id:
-        target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != admin_user.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only class teacher can edit assignment.")
-
-    content_type = request.headers.get("content-type", "").lower()
-
-    if "multipart/form-data" in content_type:
-        form_data = await request.form()
-        if "title" in form_data and form_data["title"]:
-            assignment.title = str(form_data["title"]).strip()
-        if "description" in form_data:
-            assignment.description = str(form_data["description"]).strip()
-        if "rubric_text" in form_data:
-            assignment.rubric_text = str(form_data["rubric_text"]).strip()
-        if "max_marks" in form_data and form_data["max_marks"]:
-            try:
-                assignment.max_marks = float(form_data["max_marks"])
-            except ValueError:
-                pass
-        if "deadline" in form_data and form_data["deadline"]:
-            try:
-                assignment.deadline = datetime.fromisoformat(str(form_data["deadline"]))
-            except ValueError:
-                pass
-        if "attachment" in form_data:
-            att = form_data["attachment"]
-            if hasattr(att, "filename") and att.filename:
-                upload_dir = Path(settings.UPLOAD_DIR) / f"assignment_{assignment.id}"
-                upload_dir.mkdir(parents=True, exist_ok=True)
-                saved_path = upload_dir / att.filename
-                with open(saved_path, "wb") as buffer:
-                    shutil.copyfileobj(att.file, buffer)
-                assignment.attachment_path = str(saved_path.resolve())
-                assignment.attachment_name = att.filename
-    else:
-        # JSON body
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
-
-        if "title" in body and body["title"]:
-            assignment.title = str(body["title"]).strip()
-        if "description" in body:
-            assignment.description = str(body["description"]).strip()
-        if "rubric_text" in body:
-            assignment.rubric_text = str(body["rubric_text"]).strip()
-        if "max_marks" in body and body["max_marks"] is not None:
-            try:
-                assignment.max_marks = float(body["max_marks"])
-            except ValueError:
-                pass
-        if "deadline" in body and body["deadline"]:
-            try:
-                assignment.deadline = datetime.fromisoformat(str(body["deadline"]))
-            except ValueError:
-                pass
-
-    await session.commit()
-    await session.refresh(assignment)
-    logger.info("Assignment id=%d updated: title='%s', rubric length=%d", assignment.id, assignment.title, len(assignment.rubric_text or ""))
-    return format_assignment_response(assignment)
 
 
 @app.post(

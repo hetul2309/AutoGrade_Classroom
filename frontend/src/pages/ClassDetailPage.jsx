@@ -172,12 +172,11 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   }, [assignments, selectedAssignmentId]);
 
   useEffect(() => {
-    if (currentAssignment) {
+    if (currentAssignment && !editingPromptRubric) {
       setPromptDesc(currentAssignment.description || '');
       setPromptRubric(currentAssignment.rubric_text || '');
-      setEditingPromptRubric(false);
     }
-  }, [currentAssignment?.id, currentAssignment?.description, currentAssignment?.rubric_text]);
+  }, [currentAssignment?.id, currentAssignment?.description, currentAssignment?.rubric_text, editingPromptRubric]);
 
   const handleSavePromptRubric = async () => {
     if (!selectedAssignmentId) return;
@@ -188,6 +187,8 @@ export default function ClassDetailPage({ classId, user, onBack }) {
         rubric_text: promptRubric,
       });
       setAssignments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      setPromptDesc(updated.description || '');
+      setPromptRubric(updated.rubric_text || '');
       setEditingPromptRubric(false);
       setToast({ message: 'Assignment Description & LLM Rubric updated successfully!', type: 'success' });
     } catch (err) {
