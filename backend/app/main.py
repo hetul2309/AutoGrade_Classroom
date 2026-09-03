@@ -995,8 +995,8 @@ async def recheck_single_submission(
         grade_obj.marks = res.marks
         grade_obj.max_marks = res.max_marks
         grade_obj.reasoning_text = res.reasoning
-        grade_obj.flagged = res.flagged
-        grade_obj.flag_reason = res.flag_reason
+        grade_obj.flagged = False
+        grade_obj.flag_reason = None
         grade_obj.graded_at = datetime.now(timezone.utc)
         grade_obj.manually_edited = False
     else:
@@ -1005,13 +1005,13 @@ async def recheck_single_submission(
             marks=res.marks,
             max_marks=res.max_marks,
             reasoning_text=res.reasoning,
-            flagged=res.flagged,
-            flag_reason=res.flag_reason,
+            flagged=False,
+            flag_reason=None,
             graded_at=datetime.now(timezone.utc),
         )
         session.add(grade_obj)
 
-    sub.status = SubmissionStatus.flagged if res.flagged else SubmissionStatus.graded
+    sub.status = SubmissionStatus.graded
     await session.commit()
     await session.refresh(grade_obj)
     await session.refresh(sub)
