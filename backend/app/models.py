@@ -139,15 +139,19 @@ class Assignment(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(
         Text, nullable=False,
-        comment="Plain-text description of the task — sent to LLM as context"
+        comment="Plain-text description of the task visible to students"
+    )
+    llm_prompt: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="Private prompt given specifically to the LLM during evaluation (hidden from students)"
     )
     rubric_text: Mapped[str] = mapped_column(
-        Text, nullable=False,
-        comment="Grading rubric — tells the LLM how to assign marks"
+        Text, nullable=False, default="",
+        comment="Grading rubric — tells the LLM how to assign marks (hidden from students)"
     )
     plagiarism_policy: Mapped[str | None] = mapped_column(
         Text, nullable=True,
-        comment="Plagiarism & Cheating Policy — used for copy detection during batch evaluation"
+        comment="Plagiarism & Cheating Policy — used for copy detection (hidden from students)"
     )
     max_marks: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -109,15 +109,15 @@ export default function CreateClassAssignmentModal({ classId, onClose, onCreated
             </button>
           </div>
 
-          {/* SECTION 1: FOR STUDENTS */}
+          {/* SECTION: STUDENT MATERIALS */}
           <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '12px', borderLeft: '4px solid #06b6d4' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
               <FileText size={18} color="#06b6d4" />
               <h4 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--text-bright)' }}>
-                1. Student Materials & Instructions
+                Student Materials & Lab Details
               </h4>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginLeft: 'auto' }}>
-                Visible to students in the portal
+                Visible to students in the classroom
               </span>
             </div>
 
@@ -131,21 +131,21 @@ export default function CreateClassAssignmentModal({ classId, onClose, onCreated
                   className="form-input"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Lab 3 — Convolutional Neural Networks"
+                  placeholder="e.g. Lab 1 — Linear Regression using Gradient Descent"
                   required
                 />
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Task Description & Student Instructions
+                  Student Task Description & Instructions
                 </label>
                 <textarea
-                  rows={3}
+                  rows={4}
                   className="form-input"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Explain the lab objectives, requirements, and deliverables..."
+                  placeholder="Explain the lab task, requirements, and deliverables for your students..."
                   required
                 />
               </div>
@@ -176,42 +176,9 @@ export default function CreateClassAssignmentModal({ classId, onClose, onCreated
                   )}
                 </div>
                 <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginTop: '4px' }}>
-                  Students can download this handout. It is NOT passed to the LLM to save tokens!
+                  Students can download this handout from the classwork feed.
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* SECTION 2: FOR NOTEBOOK FILE CHECKER (TOKEN EFFICIENT) */}
-          <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '12px', borderLeft: '4px solid #6366f1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-              <Cpu size={18} color="#6366f1" />
-              <h4 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--text-bright)' }}>
-                2. Notebook Grader Configuration (Token-Efficient Textual Rubric)
-              </h4>
-              <span className="badge badge-graded" style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>
-                Zero Token Bloat
-              </span>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <label style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)' }}>
-                  Grading Rubric Criteria (Textual)
-                </label>
-                <span style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>
-                  Tells Gemini/Claude exactly how to distribute marks
-                </span>
-              </div>
-              <textarea
-                rows={5}
-                className="form-input"
-                value={rubricText}
-                onChange={(e) => setRubricText(e.target.value)}
-                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.84rem', lineHeight: '1.5' }}
-                placeholder="1. Architecture (30 marks)&#10;2. Training loop (30 marks)&#10;3. Accuracy > 65% (20 marks)&#10;4. Code quality (20 marks)"
-                required
-              />
             </div>
           </div>
 

@@ -394,6 +394,24 @@ async def get_class(
     )
 
 
+def format_assignment_response(a: Assignment, is_admin: bool = True) -> AssignmentResponse:
+    has_att = bool(a.attachment_path and os.path.exists(a.attachment_path))
+    return AssignmentResponse(
+        id=a.id,
+        class_id=a.class_id,
+        title=a.title,
+        description=a.description,
+        llm_prompt=a.llm_prompt if is_admin else None,
+        rubric_text=a.rubric_text if is_admin else "",
+        plagiarism_policy=a.plagiarism_policy if is_admin else None,
+        max_marks=a.max_marks,
+        deadline=a.deadline,
+        attachment_name=a.attachment_name,
+        has_attachment=has_att,
+        created_at=a.created_at,
+    )
+
+
 @app.get("/classes/{id}/assignments", response_model=List[AssignmentResponse], tags=["Classes"])
 async def list_class_assignments(
     id: int,
@@ -409,7 +427,8 @@ async def list_class_assignments(
         .order_by(Assignment.deadline.asc())
     )
     res = await session.execute(stmt)
-    return [format_assignment_response(a) for a in res.scalars().all()]
+    is_admin = current_user.role == UserRole.admin
+    return [format_assignment_response(a, is_admin=is_admin) for a in res.scalars().all()]
 
 
 @app.post(
@@ -422,7 +441,8 @@ async def create_class_assignment(
     id: int,
     title: str = Form(...),
     description: str = Form(...),
-    rubric_text: str = Form(...),
+    llm_prompt: Optional[str] = Form(None),
+    rubric_text: Optional[str] = Form(""),
     plagiarism_policy: Optional[str] = Form(None),
     max_marks: float = Form(100.0),
     deadline: str = Form(...),
@@ -432,7 +452,8 @@ async def create_class_assignment(
 ):
     """
     Teacher creates an assignment inside a class.
-    Only the teacher who created this class can publish assignments for it.
+    Only asks for student-facing description and basics.
+    LLM prompt and rubrics can be defined in the Notebook Evaluation & Grading section.
     """
     target_class = await session.get(Class, id)
     if not target_class:
@@ -454,7 +475,8 @@ async def create_class_assignment(
         class_id=id,
         title=title,
         description=description,
-        rubric_text=rubric_text,
+        llm_prompt=llm_prompt or description,
+        rubric_text=rubric_text or "",
         plagiarism_policy=plagiarism_policy,
         max_marks=max_marks,
         deadline=deadline_dt,
@@ -479,7 +501,7 @@ async def create_class_assignment(
         "Admin %s created assignment id=%d in class id=%d (attachment=%s)",
         admin_user.name, assignment.id, id, bool(assignment.attachment_path)
     )
-    return format_assignment_response(assignment)
+    return format_assignment_response(assignment, is_admin=True)
 
 
 @app.patch("/assignments/{id}", response_model=AssignmentResponse, tags=["Assignments"])
@@ -494,6 +516,7 @@ async def update_assignment(
     Teacher updates an assignment:
     - Extend or change the deadline
     - Update instructions given to students (description)
+    - Update private prompt given specifically to LLM (llm_prompt)
     - Update prompt / criteria given to LLM (rubric_text)
     - Update plagiarism & cheating policy (plagiarism_policy)
     - Update max marks
@@ -518,6 +541,7 @@ async def update_assignment(
         form = await request.form()
         title = form.get("title")
         description = form.get("description")
+        llm_prompt = form.get("llm_prompt")
         rubric_text = form.get("rubric_text")
         plagiarism_policy = form.get("plagiarism_policy")
         max_marks = form.get("max_marks")
@@ -528,6 +552,8 @@ async def update_assignment(
             assignment.title = str(title).strip()
         if description is not None:
             assignment.description = str(description).strip()
+        if llm_prompt is not None:
+            assignment.llm_prompt = str(llm_prompt).strip()
         if rubric_text is not None:
             assignment.rubric_text = str(rubric_text).strip()
         if plagiarism_policy is not None:
@@ -565,6 +591,8 @@ async def update_assignment(
             assignment.title = str(body["title"]).strip()
         if "description" in body and body["description"] is not None:
             assignment.description = str(body["description"]).strip()
+        if "llm_prompt" in body and body["llm_prompt"] is not None:
+            assignment.llm_prompt = str(body["llm_prompt"]).strip()
         if "rubric_text" in body and body["rubric_text"] is not None:
             assignment.rubric_text = str(body["rubric_text"]).strip()
         if "plagiarism_policy" in body and body["plagiarism_policy"] is not None:
@@ -586,11 +614,12 @@ async def update_assignment(
     await session.commit()
     await session.refresh(assignment)
     logger.info(
-        "Admin %s updated assignment id=%d (%s): desc_len=%d, rubric_len=%d, plag_len=%d",
+        "Admin %s updated assignment id=%d (%s): desc_len=%d, llm_prompt_len=%d, rubric_len=%d, plag_len=%d",
         admin_user.name, assignment.id, assignment.title,
-        len(assignment.description or ""), len(assignment.rubric_text or ""), len(assignment.plagiarism_policy or "")
+        len(assignment.description or ""), len(assignment.llm_prompt or ""),
+        len(assignment.rubric_text or ""), len(assignment.plagiarism_policy or "")
     )
-    return format_assignment_response(assignment)
+    return format_assignment_response(assignment, is_admin=True)
 
 
 @app.get("/assignments/{id}/attachment", tags=["Assignments"])
@@ -977,11 +1006,11 @@ async def recheck_single_submission(
 
     nb_result = process_notebook(path)
 
-    # 2. Grade with LLM strictly using latest Academic Marking Rubric (ignoring cheating criteria on individual recheck)
+    # 2. Grade with LLM strictly using latest Academic Marking Rubric & LLM Task Prompt (ignoring cheating criteria on individual recheck)
     res = await asyncio.to_thread(
         grade_submission,
         rubric=assignment.rubric_text,
-        task_description=assignment.description,
+        task_description=assignment.llm_prompt or assignment.description,
         notebook_text=nb_result.text,
         similarity_flag=None,
         max_marks=assignment.max_marks,

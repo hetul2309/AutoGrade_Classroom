@@ -78,7 +78,8 @@ class AssignmentCreateRequest(BaseModel):
     class_id: Optional[int] = None
     title: str
     description: str
-    rubric_text: str
+    llm_prompt: Optional[str] = None
+    rubric_text: Optional[str] = ""
     plagiarism_policy: Optional[str] = None
     max_marks: float = 100.0
     deadline: datetime
@@ -87,6 +88,7 @@ class AssignmentCreateRequest(BaseModel):
 class AssignmentUpdateRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    llm_prompt: Optional[str] = None
     rubric_text: Optional[str] = None
     plagiarism_policy: Optional[str] = None
     max_marks: Optional[float] = None
@@ -98,7 +100,8 @@ class AssignmentResponse(BaseModel):
     class_id: Optional[int] = None
     title: str
     description: str
-    rubric_text: str
+    llm_prompt: Optional[str] = None
+    rubric_text: Optional[str] = ""
     plagiarism_policy: Optional[str] = None
     max_marks: float
     deadline: datetime

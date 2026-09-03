@@ -48,7 +48,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
   // Prompt & Rubric in-place editing state
   const [editingPromptRubric, setEditingPromptRubric] = useState(false);
-  const [promptDesc, setPromptDesc] = useState('');
+  const [promptLlmDesc, setPromptLlmDesc] = useState('');
   const [promptRubric, setPromptRubric] = useState('');
   const [promptPlagiarism, setPromptPlagiarism] = useState('');
   const [savingPrompt, setSavingPrompt] = useState(false);
@@ -175,27 +175,27 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
   useEffect(() => {
     if (currentAssignment && !editingPromptRubric) {
-      setPromptDesc(currentAssignment.description || '');
+      setPromptLlmDesc(currentAssignment.llm_prompt || '');
       setPromptRubric(currentAssignment.rubric_text || '');
       setPromptPlagiarism(currentAssignment.plagiarism_policy || '');
     }
-  }, [currentAssignment?.id, currentAssignment?.description, currentAssignment?.rubric_text, currentAssignment?.plagiarism_policy, editingPromptRubric]);
+  }, [currentAssignment?.id, currentAssignment?.llm_prompt, currentAssignment?.rubric_text, currentAssignment?.plagiarism_policy, editingPromptRubric]);
 
   const handleSavePromptRubric = async () => {
     if (!selectedAssignmentId) return;
     setSavingPrompt(true);
     try {
       const updated = await updateAssignmentApi(selectedAssignmentId, {
-        description: promptDesc,
+        llm_prompt: promptLlmDesc,
         rubric_text: promptRubric,
         plagiarism_policy: promptPlagiarism,
       });
       setAssignments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-      setPromptDesc(updated.description || '');
+      setPromptLlmDesc(updated.llm_prompt || '');
       setPromptRubric(updated.rubric_text || '');
       setPromptPlagiarism(updated.plagiarism_policy || '');
       setEditingPromptRubric(false);
-      setToast({ message: 'Task Description, Marking Rubric & Plagiarism Policy updated successfully!', type: 'success' });
+      setToast({ message: 'LLM Grading Prompt, Marking Rubric & Plagiarism Policy saved successfully!', type: 'success' });
     } catch (err) {
       setToast({ message: err.message || 'Failed to save prompt/rubric', type: 'error' });
     } finally {
@@ -597,15 +597,17 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                         </a>
                       )}
 
-                      <button
-                        onClick={() => setExpandedRubric((prev) => ({ ...prev, [ass.id]: !prev[ass.id] }))}
-                        className="btn-ghost"
-                        style={{ fontSize: '0.84rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                      >
-                        <FileText size={16} />
-                        <span>{expandedRubric[ass.id] ? 'Hide Grading Rubric' : 'View Grading Rubric'}</span>
-                        {expandedRubric[ass.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
+                      {isTeacher && ass.rubric_text && (
+                        <button
+                          onClick={() => setExpandedRubric((prev) => ({ ...prev, [ass.id]: !prev[ass.id] }))}
+                          className="btn-ghost"
+                          style={{ fontSize: '0.84rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          <FileText size={16} />
+                          <span>{expandedRubric[ass.id] ? 'Hide Grading Rubric' : 'View Grading Rubric'}</span>
+                          {expandedRubric[ass.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      )}
 
                       {isTeacher && (
                         <button
@@ -627,11 +629,11 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                       )}
                     </div>
 
-                    {/* Collapsible Rubric */}
-                    {expandedRubric[ass.id] && (
+                    {/* Collapsible Rubric (Teacher Only) */}
+                    {isTeacher && expandedRubric[ass.id] && (
                       <div style={{ padding: '16px', background: 'rgba(0,0,0,0.25)', borderRadius: '10px', marginBottom: '18px', border: '1px solid var(--border-subtle)' }}>
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
-                          Grading Rubric Criteria (Evaluated by AI):
+                          Grading Rubric Criteria (Private / Teacher View):
                         </div>
                         <pre style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-bright)', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
                           {ass.rubric_text}
@@ -827,7 +829,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                     <>
                       <button
                         onClick={() => {
-                          setPromptDesc(currentAssignment.description || '');
+                          setPromptLlmDesc(currentAssignment.llm_prompt || '');
                           setPromptRubric(currentAssignment.rubric_text || '');
                           setPromptPlagiarism(currentAssignment.plagiarism_policy || '');
                           setEditingPromptRubric(false);
@@ -864,25 +866,28 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
               {/* Prompt, Marking Rubric & Cheating Policy Form / Display */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '18px' }}>
-                {/* 1. Assignment Description (Prompt to LLM) */}
+                {/* 1. Lab Task Description (Prompt to LLM) */}
                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--accent-cyan)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--accent-cyan)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <FileText size={15} />
                     <span>1. Lab Task Description (LLM Prompt)</span>
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginBottom: '8px' }}>
+                    Private prompt for AI grading (hidden from students)
                   </div>
 
                   {editingPromptRubric ? (
                     <textarea
-                      value={promptDesc}
-                      onChange={(e) => setPromptDesc(e.target.value)}
+                      value={promptLlmDesc}
+                      onChange={(e) => setPromptLlmDesc(e.target.value)}
                       rows={5}
                       className="form-input"
                       style={{ width: '100%', fontSize: '0.84rem', fontFamily: 'inherit', resize: 'vertical' }}
-                      placeholder="Enter the lab task instructions for LLM context..."
+                      placeholder="Enter the lab task instructions and evaluation context for the LLM..."
                     />
                   ) : (
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', whiteSpace: 'pre-wrap', maxHeight: '160px', overflowY: 'auto' }}>
-                      {currentAssignment.description || 'No description provided.'}
+                      {currentAssignment.llm_prompt || currentAssignment.description || 'No LLM prompt provided. Click Edit to enter instructions for AI grading.'}
                     </div>
                   )}
                 </div>

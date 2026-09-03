@@ -174,7 +174,7 @@ async def preprocess_node(state: PipelineState) -> Dict[str, Any]:
 
         return {
             "assignment_title": assignment.title,
-            "assignment_description": assignment.description,
+            "assignment_description": assignment.llm_prompt or assignment.description,
             "rubric_text": assignment.rubric_text,
             "plagiarism_policy": assignment.plagiarism_policy,
             "max_marks": assignment.max_marks,
