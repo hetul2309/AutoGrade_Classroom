@@ -914,10 +914,10 @@ async def trigger_grading_pipeline(
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
 
-    # Count pending submissions
+    # Count submissions ready to be graded (pending, processing, or errored)
     stmt = select(Submission).where(
         Submission.assignment_id == id,
-        Submission.status.in_([SubmissionStatus.pending, SubmissionStatus.processing]),
+        Submission.status.in_([SubmissionStatus.pending, SubmissionStatus.processing, SubmissionStatus.error]),
     )
     pending_subs = (await session.execute(stmt)).scalars().all()
     count = len(pending_subs)

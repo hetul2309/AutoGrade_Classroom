@@ -118,10 +118,10 @@ async def preprocess_node(state: PipelineState) -> Dict[str, Any]:
                 "completed": False,
             }
 
-        # Load submissions (pending or currently processing)
+        # Load submissions (pending, processing, or errored from previous run)
         sub_stmt = select(Submission).where(
             Submission.assignment_id == assignment_id,
-            Submission.status.in_([SubmissionStatus.pending, SubmissionStatus.processing]),
+            Submission.status.in_([SubmissionStatus.pending, SubmissionStatus.processing, SubmissionStatus.error]),
         )
         sub_res = await session.execute(sub_stmt)
         db_submissions = sub_res.scalars().all()
@@ -326,7 +326,8 @@ async def submit_batch_node(state: PipelineState) -> Dict[str, Any]:
     if provider == "gemini":
         logger.info("Executing batch grading via Google Gemini for %d submissions...", len(submissions))
         raw_results = []
-        gemini_model = state.get("model") or settings.GEMINI_MODEL
+        raw_model = state.get("model")
+        gemini_model = raw_model if (raw_model and "gemini" in raw_model) else (settings.GEMINI_MODEL or "gemini-2.5-flash")
         rubric = state.get("rubric_text", "")
         task_desc = state.get("assignment_description", "")
         max_marks = state.get("max_marks", 100.0)
@@ -343,7 +344,8 @@ async def submit_batch_node(state: PipelineState) -> Dict[str, Any]:
                 await asyncio.sleep(4.1)
 
             try:
-                res = grade_with_gemini(
+                res = await asyncio.to_thread(
+                    grade_with_gemini,
                     rubric=rubric,
                     task_description=task_desc,
                     notebook_text=sub["cleaned_text"],
@@ -688,7 +690,7 @@ grading_graph = create_grading_graph()
 async def run_grading_pipeline(
     assignment_id: int,
     client: Optional[Any] = None,
-    model: str = "claude-sonnet-4-5",
+    model: Optional[str] = None,
     poll_interval_seconds: float = 2.0,
     max_poll_seconds: float = 300.0,
     direct_execution: bool = False,
@@ -700,7 +702,7 @@ async def run_grading_pipeline(
     Args:
         assignment_id:         The database ID of the assignment to grade.
         client:                Optional Anthropic client or mock client for testing.
-        model:                 Claude model to use (default: claude-sonnet-4-5).
+        model:                 Model to use (default: gemini-2.5-flash or claude-sonnet-4-5).
         poll_interval_seconds: How often to poll the batch status (seconds).
         max_poll_seconds:      Maximum time to wait before timing out (seconds).
         direct_execution:      If True, executes requests directly without Message Batches API.
@@ -709,9 +711,18 @@ async def run_grading_pipeline(
     Returns:
         Final pipeline state dictionary containing submissions, grades, flags, and status.
     """
+    selected_provider = (settings.LLM_PROVIDER or "gemini").lower()
+    if not model:
+        if selected_provider == "gemini":
+            chosen_model = settings.GEMINI_MODEL or "gemini-2.5-flash"
+        else:
+            chosen_model = "claude-sonnet-4-5"
+    else:
+        chosen_model = model
+
     initial_state: PipelineState = {
         "assignment_id": assignment_id,
-        "model": model,
+        "model": chosen_model,
         "poll_interval_seconds": poll_interval_seconds,
         "max_poll_seconds": max_poll_seconds,
         "direct_execution": direct_execution,

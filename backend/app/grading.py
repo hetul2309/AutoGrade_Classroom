@@ -245,23 +245,32 @@ def grade_with_gemini(
         model, similarity_flag is not None, max_marks,
     )
 
-    try:
-        client = genai.Client(api_key=key)
-        response = client.models.generate_content(
-            model=model,
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                response_mime_type="application/json",
-                response_schema=GeminiGradeSchema,
-                temperature=0.2,
-            ),
-        )
-    except Exception as exc:
-        err_str = str(exc)
-        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-            raise GradingAPIError(f"Gemini free rate limit reached (15 RPM): {exc}") from exc
-        raise GradingAPIError(f"Gemini API error: {exc}") from exc
+    import time
+    response = None
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model=model,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    response_mime_type="application/json",
+                    response_schema=GeminiGradeSchema,
+                    temperature=0.2,
+                ),
+            )
+            break
+        except Exception as exc:
+            err_str = str(exc)
+            if attempt < max_retries - 1 and ("10054" in err_str or "connection" in err_str.lower() or "429" in err_str or "timeout" in err_str.lower()):
+                logger.warning("Gemini transient network error on attempt %d: %s. Retrying in %.1fs...", attempt + 1, exc, 2.5 * (attempt + 1))
+                time.sleep(2.5 * (attempt + 1))
+                continue
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                raise GradingAPIError(f"Gemini free rate limit reached (15 RPM): {exc}") from exc
+            raise GradingAPIError(f"Gemini API error: {exc}") from exc
 
     raw_text = getattr(response, "text", "") or ""
     if not raw_text.strip():
