@@ -132,6 +132,7 @@ class StudentGradeView(BaseModel):
     submission_id: int
     assignment_id: int
     assignment_title: str
+    file_name: Optional[str] = None
     status: str
     marks: Optional[float] = None
     max_marks: Optional[float] = None

@@ -641,60 +641,209 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                       </div>
                     )}
 
-                    {/* Student Notebook Upload Dropzone */}
-                    {!isTeacher && (
-                      <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '16px', marginTop: '16px' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '14px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <label
-                              className="btn-secondary"
-                              style={{ cursor: 'pointer', fontSize: '0.84rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                            >
-                              <Upload size={16} />
-                              <span>{uploadingAssignmentId === ass.id && selectedFile ? selectedFile.name : 'Choose .ipynb Notebook'}</span>
-                              <input
-                                type="file"
-                                accept=".ipynb"
-                                style={{ display: 'none' }}
-                                onChange={(e) => {
-                                  setSelectedFile(e.target.files[0] || null);
-                                  setUploadingAssignmentId(ass.id);
-                                }}
-                              />
-                            </label>
-                            {uploadingAssignmentId === ass.id && selectedFile && (
-                              <span style={{ fontSize: '0.82rem', color: 'var(--accent-cyan)' }}>
-                                Ready to upload ({(selectedFile.size / 1024).toFixed(0)} KB)
-                              </span>
+                    {/* Student Notebook & Grading 2-Card Display */}
+                    {!isTeacher && (() => {
+                      const isPastDeadline = new Date() > new Date(ass.deadline);
+                      const isSelectedForThis = uploadingAssignmentId === ass.id && selectedFile;
+
+                      return (
+                        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '18px', marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                          {/* ── CARD 1: SUBMISSION / TURNED IN FILE ── */}
+                          <div style={{
+                            padding: '16px 20px',
+                            background: isUploaded ? 'rgba(6, 182, 212, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                            borderRadius: '12px',
+                            border: isUploaded ? '1px solid rgba(6, 182, 212, 0.25)' : '1px solid var(--border-subtle)'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Upload size={16} color={isUploaded ? '#06b6d4' : 'var(--text-muted)'} />
+                                <span style={{ fontSize: '0.88rem', fontWeight: '700', color: isUploaded ? 'var(--accent-cyan)' : 'var(--text-bright)' }}>
+                                  1. Your Submission (Turned In File)
+                                </span>
+                              </div>
+                              {isUploaded ? (
+                                <span className="badge badge-graded" style={{ fontSize: '0.74rem' }}>
+                                  ✓ File Turned In
+                                </span>
+                              ) : (
+                                <span className="badge badge-error" style={{ fontSize: '0.74rem' }}>
+                                  Not Submitted
+                                </span>
+                              )}
+                            </div>
+
+                            {isUploaded ? (
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: 'rgba(0, 0, 0, 0.2)', padding: '12px 14px', borderRadius: '10px', marginBottom: '12px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <FileText size={20} color="var(--accent-cyan)" />
+                                    <div>
+                                      <div style={{ fontSize: '0.88rem', fontWeight: '600', color: '#fff' }}>
+                                        {myGrade.file_name || 'demolab.ipynb'}
+                                      </div>
+                                      <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>
+                                        Turned in: {new Date(myGrade.submitted_at).toLocaleString()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Replace / Resubmit Controls (Active before deadline) */}
+                                {!isPastDeadline ? (
+                                  <div style={{ borderTop: '1px dashed rgba(6, 182, 212, 0.2)', paddingTop: '12px', marginTop: '8px' }}>
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                                      Need to change your submission? You can replace it before the deadline:
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
+                                      <label
+                                        className="btn-secondary"
+                                        style={{ cursor: 'pointer', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}
+                                      >
+                                        <RotateCw size={14} />
+                                        <span>{isSelectedForThis ? 'Choose Different File' : 'Choose Replacement .ipynb'}</span>
+                                        <input
+                                          type="file"
+                                          accept=".ipynb"
+                                          style={{ display: 'none' }}
+                                          onChange={(e) => {
+                                            setSelectedFile(e.target.files[0] || null);
+                                            setUploadingAssignmentId(ass.id);
+                                          }}
+                                        />
+                                      </label>
+
+                                      {isSelectedForThis && (
+                                        <>
+                                          <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', fontWeight: '600' }}>
+                                            Selected: {selectedFile.name}
+                                          </span>
+                                          <button
+                                            onClick={() => handleStudentUpload(ass.id)}
+                                            disabled={uploadSubmitting}
+                                            className="btn-primary"
+                                            style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                                          >
+                                            {uploadSubmitting ? 'Replacing...' : 'Confirm & Replace File'}
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '0.78rem', color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Clock size={14} />
+                                    <span>Deadline has passed. Submission is now locked and cannot be replaced.</span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              /* Not yet uploaded */
+                              <div>
+                                {!isPastDeadline ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                      <label
+                                        className="btn-secondary"
+                                        style={{ cursor: 'pointer', fontSize: '0.84rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                                      >
+                                        <Upload size={16} />
+                                        <span>{isSelectedForThis ? selectedFile.name : 'Choose .ipynb Notebook'}</span>
+                                        <input
+                                          type="file"
+                                          accept=".ipynb"
+                                          style={{ display: 'none' }}
+                                          onChange={(e) => {
+                                            setSelectedFile(e.target.files[0] || null);
+                                            setUploadingAssignmentId(ass.id);
+                                          }}
+                                        />
+                                      </label>
+                                      {isSelectedForThis && (
+                                        <span style={{ fontSize: '0.82rem', color: 'var(--accent-cyan)' }}>
+                                          Ready ({(selectedFile.size / 1024).toFixed(0)} KB)
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <button
+                                      onClick={() => handleStudentUpload(ass.id)}
+                                      disabled={uploadSubmitting || !isSelectedForThis}
+                                      className="btn-primary"
+                                      style={{ fontSize: '0.84rem', padding: '8px 18px' }}
+                                    >
+                                      {uploadSubmitting ? 'Uploading...' : 'Turn In Notebook'}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '0.82rem', color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Clock size={14} />
+                                    <span>Deadline passed on {new Date(ass.deadline).toLocaleString()}. Submissions are closed.</span>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
 
-                          <button
-                            onClick={() => handleStudentUpload(ass.id)}
-                            disabled={uploadSubmitting || uploadingAssignmentId !== ass.id || !selectedFile}
-                            className="btn-primary"
-                            style={{ fontSize: '0.84rem', padding: '8px 18px' }}
-                          >
-                            {uploadSubmitting ? 'Uploading...' : isUploaded ? 'Resubmit Notebook' : 'Turn In Notebook'}
-                          </button>
-                        </div>
-
-                        {/* Student AI Feedback Review */}
-                        {isGraded && myGrade?.reasoning_text && (
-                          <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '10px', border: '1px solid rgba(99, 102, 241, 0.25)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                              <Sparkles size={16} color="var(--primary)" />
-                              <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--primary)' }}>
-                                AI Grading Feedback & Rubric Breakdown:
-                              </span>
+                          {/* ── CARD 2: EVALUATION / RESULT STATUS (KEPT SEPARATE) ── */}
+                          <div style={{
+                            padding: '16px 20px',
+                            background: isGraded ? 'rgba(34, 197, 94, 0.05)' : 'rgba(99, 102, 241, 0.05)',
+                            borderRadius: '12px',
+                            border: isGraded ? '1px solid rgba(34, 197, 94, 0.25)' : '1px solid rgba(99, 102, 241, 0.2)'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Sparkles size={16} color={isGraded ? '#4ade80' : '#818cf8'} />
+                                <span style={{ fontSize: '0.88rem', fontWeight: '700', color: isGraded ? '#4ade80' : '#818cf8' }}>
+                                  2. Evaluation & Grade Result
+                                </span>
+                              </div>
+                              {isGraded ? (
+                                <span className="badge badge-graded" style={{ fontSize: '0.85rem', padding: '4px 12px', fontWeight: '700' }}>
+                                  Score: {myGrade.marks} / {myGrade.max_marks}
+                                </span>
+                              ) : isUploaded ? (
+                                <span className="badge badge-pending" style={{ fontSize: '0.78rem' }}>
+                                  ⏳ Result Pending
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                                  Awaiting Submission
+                                </span>
+                              )}
                             </div>
-                            <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-bright)', lineHeight: '1.6' }}>
-                              {myGrade.reasoning_text}
-                            </p>
+
+                            {!isUploaded ? (
+                              <div style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>
+                                Turn in your Jupyter notebook above to receive an AI evaluation and score breakdown.
+                              </div>
+                            ) : !isGraded ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '8px' }}>
+                                <Clock size={16} color="#818cf8" />
+                                <div style={{ fontSize: '0.84rem', color: 'var(--text-bright)' }}>
+                                  <strong>Result Pending:</strong> Your notebook has been submitted successfully and is queued for AI grading by your instructor.
+                                </div>
+                              </div>
+                            ) : (
+                              /* Graded Feedback */
+                              <div>
+                                {myGrade.reasoning_text && (
+                                  <div style={{ padding: '14px', background: 'rgba(0, 0, 0, 0.25)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                                    <div style={{ fontSize: '0.76rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                                      AI Feedback Breakdown:
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--text-bright)', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                      {myGrade.reasoning_text}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}

@@ -762,17 +762,15 @@ async def upload_submission(
         )
 
     # 3. Check for existing submission
-    sub_stmt = select(Submission).where(
-        Submission.assignment_id == assignment_id,
-        Submission.student_id == current_user.id,
+    sub_stmt = (
+        select(Submission)
+        .where(
+            Submission.assignment_id == assignment_id,
+            Submission.student_id == current_user.id,
+        )
+        .options(selectinload(Submission.grade))
     )
     existing_sub = (await session.execute(sub_stmt)).scalar_one_or_none()
-
-    if existing_sub and existing_sub.status in (SubmissionStatus.graded, SubmissionStatus.processing):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot overwrite submission: already in '{existing_sub.status.value}' state.",
-        )
 
     # 4. Save file to storage
     upload_dir = Path(settings.UPLOAD_DIR) / f"assignment_{assignment_id}"
@@ -783,8 +781,10 @@ async def upload_submission(
     with open(saved_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # 5. Persist submission record
+    # 5. Persist submission record (allow replacing/resubmitting notebook before deadline)
     if existing_sub:
+        if existing_sub.grade:
+            await session.delete(existing_sub.grade)
         existing_sub.file_path = str(saved_path.resolve())
         existing_sub.submitted_at = now_utc
         existing_sub.status = SubmissionStatus.pending
@@ -801,6 +801,10 @@ async def upload_submission(
 
     await session.commit()
     await session.refresh(submission_obj)
+    logger.info(
+        "Student %s (id=%d) submitted/replaced notebook '%s' for assignment id=%d",
+        current_user.name, current_user.id, clean_filename, assignment_id
+    )
     return submission_obj
 
 
@@ -826,11 +830,19 @@ async def get_my_grades(
     views: List[StudentGradeView] = []
     for sub in submissions:
         grade = sub.grade
+        fname = Path(sub.file_path).name if sub.file_path else None
+        # Remove internal prefix if formatted like 'assignment_74_202401002_...'
+        if fname and fname.startswith(f"assignment_{sub.assignment_id}_{sub.student_id}_"):
+            fname = fname[len(f"assignment_{sub.assignment_id}_{sub.student_id}_"):]
+        elif fname and fname.startswith(f"student_{sub.student_id}_"):
+            fname = fname[len(f"student_{sub.student_id}_"):]
+
         views.append(
             StudentGradeView(
                 submission_id=sub.id,
                 assignment_id=sub.assignment_id,
                 assignment_title=sub.assignment.title if sub.assignment else "Unknown Assignment",
+                file_name=fname,
                 status=sub.status.value,
                 marks=grade.marks if grade else None,
                 max_marks=grade.max_marks if grade else None,
