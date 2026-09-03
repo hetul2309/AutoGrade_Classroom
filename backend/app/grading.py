@@ -246,7 +246,15 @@ def grade_with_gemini(
 
     import time
     models_to_try = [model]
-    for alt in ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.5-flash"]:
+    for alt in [
+        "gemini-flash-latest",
+        "gemini-3.5-flash-lite",
+        "gemini-3.7-flash",
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-2.5-flash",
+    ]:
         if alt not in models_to_try:
             models_to_try.append(alt)
 
@@ -255,26 +263,26 @@ def grade_with_gemini(
     client = genai.Client(api_key=key)
 
     for m in models_to_try:
-        for attempt in range(2):
-            try:
-                response = client.models.generate_content(
-                    model=m,
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        response_mime_type="application/json",
-                        response_schema=GeminiGradeSchema,
-                        temperature=0.2,
-                    ),
-                )
-                model = m
-                break
-            except Exception as exc:
-                last_err = exc
-                logger.warning("Gemini model %s attempt %d error: %s", m, attempt + 1, exc)
-                time.sleep(2.0)
-        if response is not None:
+        try:
+            response = client.models.generate_content(
+                model=m,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    response_mime_type="application/json",
+                    response_schema=GeminiGradeSchema,
+                    temperature=0.2,
+                ),
+            )
+            model = m
             break
+        except Exception as exc:
+            last_err = exc
+            exc_str = str(exc)
+            if "RESOURCE_EXHAUSTED" in exc_str or "429" in exc_str:
+                logger.warning("Gemini model %s free quota exhausted, immediately trying next fallback candidate...", m)
+            else:
+                logger.warning("Gemini model %s failed: %s, trying next fallback candidate...", m, exc)
 
     if response is None:
         raise GradingAPIError(f"All Gemini models failed: {last_err}")
