@@ -44,6 +44,7 @@ from sqlalchemy.orm import selectinload
 from app.auth import (
     create_access_token,
     get_current_user,
+    hash_password,
     require_admin,
     require_student,
     verify_password,
@@ -71,12 +72,14 @@ from app.schemas import (
     ClassResponse,
     GradePatchRequest,
     LoginRequest,
+    RegisterRequest,
     StudentGradeView,
     SubmissionResponse,
     TokenResponse,
     TriggerGradingResponse,
     UserResponse,
 )
+
 
 logger = logging.getLogger("app.main")
 settings = get_settings()
