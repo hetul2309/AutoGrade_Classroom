@@ -111,33 +111,68 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   }, [classId]);
 
   // 2. Load student grades if student
+  const loadStudentGrades = async () => {
+    if (isTeacher) return;
+    try {
+      const grades = await getMyGradesApi();
+      setStudentGrades(grades);
+    } catch {}
+  };
+
   useEffect(() => {
+    loadStudentGrades();
     if (!isTeacher) {
-      getMyGradesApi()
-        .then((grades) => setStudentGrades(grades))
-        .catch(() => {});
+      const interval = setInterval(loadStudentGrades, 5000);
+      return () => clearInterval(interval);
     }
   }, [isTeacher, assignments]);
 
   // 3. Load admin evaluation grades when selected assignment changes
-  const loadEvalGrades = async (assignmentId) => {
+  const loadEvalGrades = async (assignmentId, silent = false) => {
     if (!assignmentId || !isTeacher) return;
     try {
-      setEvalLoading(true);
+      if (!silent) setEvalLoading(true);
       const data = await getAdminAssignmentGradesApi(assignmentId);
       setEvalGrades(data);
     } catch (err) {
-      setToast({ message: err.message || 'Failed to load grades', type: 'error' });
+      if (!silent) {
+        setToast({ message: err.message || 'Failed to load grades', type: 'error' });
+      }
     } finally {
-      setEvalLoading(false);
+      if (!silent) setEvalLoading(false);
     }
   };
 
   useEffect(() => {
-    if (activeTab === 'evaluation' && selectedAssignmentId) {
+    if (activeTab === 'evaluation' && selectedAssignmentId && isTeacher) {
       loadEvalGrades(selectedAssignmentId);
+      // Auto-poll silently every 5s so teacher sees live student uploads in real-time
+      const interval = setInterval(() => {
+        loadEvalGrades(selectedAssignmentId, true);
+      }, 5000);
+      return () => clearInterval(interval);
     }
-  }, [activeTab, selectedAssignmentId]);
+  }, [activeTab, selectedAssignmentId, isTeacher]);
+
+  // Auto-sync when window / browser tab regains focus
+  useEffect(() => {
+    const handleFocus = () => {
+      if (isTeacher && activeTab === 'evaluation' && selectedAssignmentId) {
+        loadEvalGrades(selectedAssignmentId, true);
+      } else if (!isTeacher) {
+        loadStudentGrades();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') handleFocus();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [isTeacher, activeTab, selectedAssignmentId]);
 
   const handleCopyCode = () => {
     if (!classData) return;
