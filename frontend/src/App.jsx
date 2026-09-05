@@ -7,9 +7,6 @@ import ClassDetailPage from './pages/ClassDetailPage';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
-  const [activeView, setActiveView] = useState(
-    getCurrentUser()?.role === 'admin' ? 'admin' : 'student'
-  );
   const [selectedClassId, setSelectedClassId] = useState(null);
 
   useEffect(() => {
@@ -30,7 +27,6 @@ export default function App() {
       role: data.role,
     };
     setCurrentUser(userObj);
-    setActiveView(data.role === 'admin' ? 'admin' : 'student');
     setSelectedClassId(null);
   };
 
@@ -38,10 +34,6 @@ export default function App() {
     clearAuthSession();
     setCurrentUser(null);
     setSelectedClassId(null);
-  };
-
-  const handleToggleView = () => {
-    setActiveView((prev) => (prev === 'admin' ? 'student' : 'admin'));
   };
 
   const handleNavigateHome = () => {
@@ -53,18 +45,10 @@ export default function App() {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
 
-  // Active user perspective based on activeView
-  const effectiveUser = {
-    ...currentUser,
-    role: activeView,
-  };
-
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Navbar
         currentUser={currentUser}
-        activeView={activeView}
-        onToggleView={handleToggleView}
         onNavigateHome={handleNavigateHome}
         onLogout={handleLogout}
       />
@@ -72,12 +56,12 @@ export default function App() {
         {selectedClassId ? (
           <ClassDetailPage
             classId={selectedClassId}
-            user={effectiveUser}
+            user={currentUser}
             onBack={() => setSelectedClassId(null)}
           />
         ) : (
           <ClassroomPage
-            user={effectiveUser}
+            user={currentUser}
             onSelectClass={(id) => setSelectedClassId(id)}
           />
         )}

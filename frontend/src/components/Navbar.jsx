@@ -2,7 +2,7 @@ import React from 'react';
 import { BookOpen, LogOut, Shield, User, Sparkles } from 'lucide-react';
 import { clearAuthSession } from '../api';
 
-export default function Navbar({ currentUser, activeView, onToggleView, onNavigateHome, onLogout }) {
+export default function Navbar({ currentUser, onNavigateHome, onLogout }) {
   const isAdmin = currentUser?.role === 'admin';
 
   return (
@@ -31,8 +31,8 @@ export default function Navbar({ currentUser, activeView, onToggleView, onNaviga
               <span style={{ fontFamily: 'var(--font-heading)', fontSize: '1.2rem', fontWeight: '700', letterSpacing: '-0.02em' }}>
                 AutoGrade <span style={{ color: 'var(--accent-cyan)' }}>Classroom</span>
               </span>
-              <span className={`badge ${activeView === 'admin' ? 'badge-processing' : 'badge-graded'}`} style={{ fontSize: '0.68rem', padding: '2px 8px' }}>
-                <Shield size={10} /> {activeView === 'admin' ? 'Teacher / TA' : 'Student'}
+              <span className={`badge ${isAdmin ? 'badge-processing' : 'badge-graded'}`} style={{ fontSize: '0.68rem', padding: '2px 8px' }}>
+                <Shield size={10} /> {isAdmin ? 'Teacher / TA' : 'Student'}
               </span>
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
@@ -51,18 +51,6 @@ export default function Navbar({ currentUser, activeView, onToggleView, onNaviga
             <BookOpen size={15} />
             <span>My Classes</span>
           </button>
-
-          {/* Admin Switcher */}
-          {isAdmin && (
-            <button
-              onClick={onToggleView}
-              className="btn-secondary"
-              style={{ fontSize: '0.8rem', padding: '6px 12px' }}
-              title="Toggle between Admin and Student perspective"
-            >
-              {activeView === 'admin' ? 'Preview Student View' : 'Back to Teacher View'}
-            </button>
-          )}
 
           {currentUser && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 12px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '999px', border: '1px solid var(--border-subtle)' }}>
