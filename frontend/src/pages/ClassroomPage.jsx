@@ -75,22 +75,16 @@ export default function ClassroomPage({ user, onSelectClass }) {
         />
       )}
 
-      {/* Top Banner Header */}
+      {/* Dashboard Section Header */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '20px', marginBottom: '32px' }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'linear-gradient(135deg, #4f46e5, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <GraduationCap size={22} color="#fff" />
-            </div>
-            <h1 style={{ fontSize: '1.9rem', fontWeight: '800' }}>Google Classroom</h1>
-            <span className="badge badge-graded" style={{ textTransform: 'none', fontSize: '0.78rem' }}>
-              Multi-Class Hub
-            </span>
-          </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem' }}>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: '800', letterSpacing: '-0.02em', marginBottom: '6px' }}>
+            My Courses & Classes
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', margin: 0 }}>
             {isTeacher
-              ? 'Manage your courses, publish assignments with handouts, and evaluate student notebooks.'
-              : 'View your enrolled courses, download assignment materials, and submit Jupyter notebooks.'}
+              ? 'Select a course to evaluate assignments, check plagiarism, and publish grades.'
+              : 'View your enrolled courses, turn in Jupyter notebooks, and view your evaluation results.'}
           </p>
         </div>
 
