@@ -83,6 +83,20 @@ export async function loginApi(email, password) {
   return data;
 }
 
+export async function registerApi(registerData) {
+  const data = await apiRequest('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(registerData),
+  });
+  setAuthSession(data.access_token, {
+    id: data.user_id,
+    name: data.name,
+    email: data.email,
+    role: data.role,
+  });
+  return data;
+}
+
 export async function getProfileApi() {
   return apiRequest('/auth/me');
 }

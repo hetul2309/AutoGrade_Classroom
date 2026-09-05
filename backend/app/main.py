@@ -107,6 +107,84 @@ async def health_check():
 
 # ── Authentication Endpoints ──────────────────────────────────────────────────
 
+@app.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED, tags=["Auth"])
+@app.post("/auth/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED, tags=["Auth"])
+async def register(
+    payload: RegisterRequest,
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Registers a new user (teacher or student) into the AutoGrade platform.
+    Requires First Name, Last Name, Email, Student ID, Password, Confirm Password.
+    """
+    if payload.password != payload.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match.",
+        )
+
+    if len(payload.password) < 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 4 characters long.",
+        )
+
+    email_clean = payload.email.strip().lower()
+    first_name_clean = payload.first_name.strip()
+    last_name_clean = payload.last_name.strip()
+    student_id_clean = payload.student_id.strip()
+    full_name = f"{first_name_clean} {last_name_clean}".strip() or "Student"
+
+    # Check email uniqueness
+    stmt = select(Student).where(func.lower(Student.email) == email_clean)
+    existing_user = (await session.execute(stmt)).scalar_one_or_none()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"An account with email '{email_clean}' already exists. Please log in.",
+        )
+
+    # Check if student_id is numeric and can be used as primary key id if available
+    user_id = None
+    if student_id_clean.isdigit():
+        numeric_id = int(student_id_clean)
+        id_check = (await session.execute(select(Student.id).where(Student.id == numeric_id))).scalar_one_or_none()
+        if not id_check:
+            user_id = numeric_id
+
+    hashed_pw = hash_password(payload.password)
+
+    new_user = Student(
+        name=full_name,
+        first_name=first_name_clean,
+        last_name=last_name_clean,
+        student_id_str=student_id_clean,
+        email=email_clean,
+        hashed_password=hashed_pw,
+        role=UserRole.student,
+    )
+    if user_id is not None:
+        new_user.id = user_id
+
+    session.add(new_user)
+    await session.commit()
+    await session.refresh(new_user)
+
+    logger.info("New user registered: %s (%s, ID: %d)", new_user.name, new_user.email, new_user.id)
+
+    access_token = create_access_token(
+        data={"sub": str(new_user.id), "email": new_user.email, "role": new_user.role.value}
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        role=new_user.role.value,
+        user_id=new_user.id,
+        name=new_user.name,
+        email=new_user.email,
+    )
+
+
 @app.post("/auth/login", response_model=TokenResponse, tags=["Auth"])
 async def login(
     payload: LoginRequest,
@@ -116,7 +194,7 @@ async def login(
     Authenticates a student or admin user with email and password.
     Returns a JWT access token containing the user's role and ID.
     """
-    stmt = select(Student).where(Student.email == payload.email)
+    stmt = select(Student).where(func.lower(Student.email) == payload.email.strip().lower())
     res = await session.execute(stmt)
     user = res.scalar_one_or_none()
 
@@ -176,8 +254,6 @@ async def list_classes(
     Lists classes for the authenticated user.
     Strict isolation rule:
     A user (teacher or student) can ONLY see classes that they created OR are enrolled in.
-    If someone is neither the creator/teacher nor enrolled as a student,
-    the class is completely hidden from their dashboard.
     """
     enrolled_class_ids_subquery = (
         select(ClassEnrollment.class_id)
@@ -225,6 +301,7 @@ async def list_classes(
                 teacher_name=teacher_name,
                 student_count=student_count,
                 assignment_count=assignment_count,
+                is_teacher=(c.teacher_id == current_user.id),
                 created_at=c.created_at,
             )
         )
@@ -236,7 +313,7 @@ async def list_classes(
 async def create_class(
     payload: ClassCreateRequest,
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """Creates a new class with an auto-generated unique 6-character code."""
     charset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -253,7 +330,7 @@ async def create_class(
         section=payload.section,
         code=candidate_code,
         color=payload.color,
-        teacher_id=admin_user.id,
+        teacher_id=current_user.id,
     )
     session.add(new_class)
     await session.commit()
@@ -266,9 +343,10 @@ async def create_class(
         code=new_class.code,
         color=new_class.color,
         teacher_id=new_class.teacher_id,
-        teacher_name=admin_user.name,
+        teacher_name=current_user.name,
         student_count=0,
         assignment_count=0,
+        is_teacher=True,
         created_at=new_class.created_at,
     )
 

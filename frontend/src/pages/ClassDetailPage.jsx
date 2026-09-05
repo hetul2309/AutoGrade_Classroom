@@ -82,7 +82,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const isTeacher = user?.role === 'admin';
+  const isTeacher = Boolean(classData ? (classData.teacher_id === user?.id || classData.is_teacher || user?.role === 'admin') : user?.role === 'admin');
 
   // 1. Load initial class data
   const loadClassInfo = async () => {

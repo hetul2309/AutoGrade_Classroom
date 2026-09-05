@@ -16,6 +16,15 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RegisterRequest(BaseModel):
+    first_name: str
+    last_name: str
+    email: str
+    student_id: str
+    password: str
+    confirm_password: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -28,6 +37,9 @@ class TokenResponse(BaseModel):
 class UserResponse(BaseModel):
     id: int
     name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    student_id_str: Optional[str] = None
     email: str
     role: str
     created_at: datetime
@@ -57,6 +69,7 @@ class ClassResponse(BaseModel):
     teacher_name: str
     student_count: int = 0
     assignment_count: int = 0
+    is_teacher: bool = False
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
