@@ -13,11 +13,13 @@ Provides endpoints for:
 """
 
 import asyncio
+import io
 import logging
 import os
 import shutil
 import string
 import secrets
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -34,7 +36,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import and_, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -1057,6 +1059,98 @@ async def get_assignment_grades_for_admin(
             )
 
     return items
+
+
+@app.get("/admin/submissions/{id}/download", tags=["Admin"])
+async def download_single_submission(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """
+    Teacher downloads an individual student's uploaded .ipynb notebook file.
+    """
+    submission = await session.get(Submission, id)
+    if not submission or not submission.file_path or not os.path.exists(submission.file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Notebook submission file not found on disk."
+        )
+
+    file_p = Path(submission.file_path)
+    clean_name = file_p.name
+    # Clean up name if it has internal prefixes
+    if clean_name.startswith(f"assignment_{submission.assignment_id}_{submission.student_id}_"):
+        clean_name = clean_name[len(f"assignment_{submission.assignment_id}_{submission.student_id}_"):]
+    elif clean_name.startswith(f"student_{submission.student_id}_"):
+        clean_name = clean_name[len(f"student_{submission.student_id}_"):]
+
+    download_filename = f"{submission.student_id}_{clean_name}"
+    if not download_filename.endswith(".ipynb"):
+        download_filename += ".ipynb"
+
+    return FileResponse(
+        path=str(file_p.resolve()),
+        filename=download_filename,
+        media_type="application/x-ipynb+json",
+    )
+
+
+@app.get("/admin/assignments/{id}/download-all", tags=["Admin"])
+async def download_all_submissions_zip(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """
+    Teacher downloads a ZIP archive containing all uploaded student .ipynb files for this assignment.
+    """
+    assignment = await session.get(Assignment, id)
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    stmt = (
+        select(Submission)
+        .where(Submission.assignment_id == id)
+        .options(selectinload(Submission.student))
+        .order_by(Submission.student_id.asc())
+    )
+    submissions = (await session.execute(stmt)).scalars().all()
+
+    valid_subs = [s for s in submissions if s.file_path and os.path.exists(s.file_path)]
+    if not valid_subs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No uploaded student notebook submissions found for this assignment."
+        )
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for sub in valid_subs:
+            file_p = Path(sub.file_path)
+            clean_name = file_p.name
+            if clean_name.startswith(f"assignment_{sub.assignment_id}_{sub.student_id}_"):
+                clean_name = clean_name[len(f"assignment_{sub.assignment_id}_{sub.student_id}_"):]
+            elif clean_name.startswith(f"student_{sub.student_id}_"):
+                clean_name = clean_name[len(f"student_{sub.student_id}_"):]
+
+            in_zip_filename = f"{sub.student_id}_{clean_name}"
+            if not in_zip_filename.endswith(".ipynb"):
+                in_zip_filename += ".ipynb"
+
+            zip_file.write(str(file_p.resolve()), arcname=in_zip_filename)
+
+    zip_buffer.seek(0)
+    safe_title = "".join(c for c in assignment.title if c.isalnum() or c in ("-", "_")).strip() or f"assignment_{id}"
+    zip_name = f"{safe_title}_submissions.zip"
+
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{zip_name}"'
+        }
+    )
 
 
 @app.patch("/admin/grades/{id}", response_model=AdminGradeItem, tags=["Admin"])

@@ -15,6 +15,8 @@ import {
   recheckSubmissionApi,
   publishAssignmentResultsApi,
   unpublishAssignmentResultsApi,
+  downloadSingleSubmissionApi,
+  downloadAllSubmissionsZipApi,
   updateAssignmentApi,
   uploadSubmissionApi,
   getMyGradesApi,
@@ -65,6 +67,10 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   // Publish Results state
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [publishingResults, setPublishingResults] = useState(false);
+
+  // Notebook download states
+  const [downloadingZip, setDownloadingZip] = useState(false);
+  const [downloadingSubId, setDownloadingSubId] = useState(null);
 
   // Modals & UI toggles
   const [showCreateAssignmentModal, setShowCreateAssignmentModal] = useState(false);
@@ -332,6 +338,34 @@ export default function ClassDetailPage({ classId, user, onBack }) {
       setToast({ message: err.message || 'Failed to update result publish status', type: 'error' });
     } finally {
       setPublishingResults(false);
+    }
+  };
+
+  const handleDownloadSingle = async (item) => {
+    if (!item.submission_id) return;
+    setDownloadingSubId(item.submission_id);
+    try {
+      const fname = `${item.student_id}_submission.ipynb`;
+      await downloadSingleSubmissionApi(item.submission_id, fname);
+      setToast({ message: `Downloaded notebook for ${item.student_name}`, type: 'success' });
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to download notebook', type: 'error' });
+    } finally {
+      setDownloadingSubId(null);
+    }
+  };
+
+  const handleDownloadAllZip = async () => {
+    if (!selectedAssignmentId || !currentAssignment) return;
+    setDownloadingZip(true);
+    try {
+      const zipName = `${currentAssignment.title.replace(/[^a-zA-Z0-9-_]/g, '_')}_all_submissions.zip`;
+      await downloadAllSubmissionsZipApi(selectedAssignmentId, zipName);
+      setToast({ message: '📦 Downloaded all submissions ZIP archive!', type: 'success' });
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to download ZIP archive', type: 'error' });
+    } finally {
+      setDownloadingZip(false);
     }
   };
 
@@ -973,6 +1007,39 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                 )}
               </button>
 
+              {/* Download All Submissions (ZIP) Button */}
+              {currentAssignment && (
+                <button
+                  onClick={handleDownloadAllZip}
+                  disabled={downloadingZip || evalGrades.filter((g) => g.submission_id).length === 0}
+                  className="btn-secondary"
+                  style={{
+                    padding: '9px 18px',
+                    fontSize: '0.88rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    borderColor: 'rgba(6, 182, 212, 0.45)',
+                    background: 'rgba(6, 182, 212, 0.1)',
+                    color: 'var(--accent-cyan)',
+                    fontWeight: '600'
+                  }}
+                  title="Download a ZIP archive containing all uploaded student notebook files"
+                >
+                  {downloadingZip ? (
+                    <>
+                      <div className="animate-spin" style={{ width: '15px', height: '15px', border: '2px solid var(--accent-cyan)', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                      <span>Downloading ZIP...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileDown size={16} />
+                      <span>Download All (.zip)</span>
+                    </>
+                  )}
+                </button>
+              )}
+
               {/* Publish Results to Students Button */}
               {currentAssignment && (
                 !currentAssignment.results_published ? (
@@ -1218,7 +1285,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
             </div>
           )}
 
-          {/* Grades Table */}
+            {/* Grades Table */}
           <div className="glass-panel" style={{ borderRadius: '14px', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
@@ -1226,6 +1293,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                   <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Student</th>
                   <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Status</th>
                   <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Marks</th>
+                  <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Notebook</th>
                   <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>AI Reasoning & Evaluation</th>
                   <th style={{ padding: '14px 18px', fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', textAlign: 'right' }}>Actions</th>
                 </tr>
@@ -1233,7 +1301,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
               <tbody>
                 {filteredGrades.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                       No submissions found for this assignment.
                     </td>
                   </tr>
@@ -1281,6 +1349,38 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                             </span>
                           ) : (
                             <span style={{ color: 'var(--text-dim)' }}>—</span>
+                          )}
+                        </td>
+
+                        {/* Individual Student Notebook Download */}
+                        <td style={{ padding: '14px 18px' }}>
+                          {!isNoSub ? (
+                            <button
+                              onClick={() => handleDownloadSingle(item)}
+                              disabled={downloadingSubId === item.submission_id}
+                              className="btn-secondary"
+                              style={{
+                                padding: '5px 12px',
+                                fontSize: '0.78rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                borderColor: 'rgba(6, 182, 212, 0.45)',
+                                background: 'rgba(6, 182, 212, 0.08)',
+                                color: 'var(--accent-cyan)',
+                                borderRadius: '8px'
+                              }}
+                              title={`Download ${item.student_name}'s uploaded .ipynb file`}
+                            >
+                              {downloadingSubId === item.submission_id ? (
+                                <div className="animate-spin" style={{ width: '12px', height: '12px', border: '2px solid var(--accent-cyan)', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                              ) : (
+                                <FileDown size={13} />
+                              )}
+                              <span>.ipynb</span>
+                            </button>
+                          ) : (
+                            <span style={{ color: 'var(--text-dim)', fontWeight: '700', paddingLeft: '8px' }}>—</span>
                           )}
                         </td>
 
