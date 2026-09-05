@@ -179,12 +179,9 @@ export default function ClassroomPage({ user, onSelectClass }) {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div style={{ flex: 1, paddingRight: '12px' }}>
-                    <h3 style={{ fontSize: '1.25rem', fontWeight: '800', lineHeight: '1.3', marginBottom: '4px' }}>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: '800', lineHeight: '1.3', margin: 0 }}>
                       {cls.name}
                     </h3>
-                    <div style={{ fontSize: '0.82rem', opacity: 0.9, fontWeight: '500' }}>
-                      {cls.section ? (cls.section.toLowerCase().startsWith('section') ? cls.section : `Section: ${cls.section}`) : 'General Section'}
-                    </div>
                   </div>
 
                   {/* Class Code Pill with 1-click copy */}
