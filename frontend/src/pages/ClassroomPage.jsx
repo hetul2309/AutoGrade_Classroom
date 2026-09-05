@@ -183,7 +183,7 @@ export default function ClassroomPage({ user, onSelectClass }) {
                       {cls.name}
                     </h3>
                     <div style={{ fontSize: '0.82rem', opacity: 0.9, fontWeight: '500' }}>
-                      {cls.section || 'General Section'}
+                      {cls.section ? (cls.section.toLowerCase().startsWith('section') ? cls.section : `Section: ${cls.section}`) : 'General Section'}
                     </div>
                   </div>
 

@@ -520,14 +520,18 @@ export default function ClassDetailPage({ classId, user, onBack }) {
         }}
       >
         <div>
-          <span style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.9, textTransform: 'uppercase', letterSpacing: '1px' }}>
-            {classData.section || 'General Section'}
-          </span>
-          <h1 style={{ fontSize: '2.2rem', fontWeight: '800', lineHeight: '1.2', margin: '6px 0 10px' }}>
+          <h1 style={{ fontSize: '2.2rem', fontWeight: '800', lineHeight: '1.2', margin: '0 0 8px 0' }}>
             {classData.name}
           </h1>
-          <div style={{ fontSize: '0.95rem', opacity: 0.95 }}>
-            Instructor: <strong>{classData.teacher_name}</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '0.92rem', opacity: 0.95 }}>
+            {classData.section && (
+              <span className="badge" style={{ background: 'rgba(255,255,255,0.18)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', padding: '2px 10px', fontSize: '0.78rem', textTransform: 'none' }}>
+                {classData.section.toLowerCase().startsWith('section') ? classData.section : `Section: ${classData.section}`}
+              </span>
+            )}
+            <div>
+              Instructor: <strong>{classData.teacher_name}</strong>
+            </div>
           </div>
         </div>
 
