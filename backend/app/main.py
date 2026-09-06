@@ -71,6 +71,7 @@ from app.storage import (
     ensure_local_file,
     upload_file_to_cloudinary,
 )
+from app.email_service import generate_otp, send_otp_email, verify_stored_otp
 from app.schemas import (
     AdminClassItem,
     AdminGradeItem,
@@ -79,6 +80,7 @@ from app.schemas import (
     AdminUserItem,
     AssignmentCreateRequest,
     AssignmentResponse,
+    ChangePasswordRequest,
     ClassCreateRequest,
     ClassJoinRequest,
     ClassMemberResponse,
@@ -87,11 +89,15 @@ from app.schemas import (
     GradePatchRequest,
     LoginRequest,
     RegisterRequest,
+    ResetPasswordRequest,
+    SendOtpRequest,
     StudentGradeView,
     SubmissionResponse,
     TokenResponse,
     TriggerGradingResponse,
+    UpdateProfileRequest,
     UserResponse,
+    VerifyOtpRequest,
 )
 
 
@@ -143,6 +149,182 @@ def get_admin_pass() -> str:
 
 
 # ── Authentication Endpoints ──────────────────────────────────────────────────
+
+@app.post("/auth/send-otp", tags=["Auth"])
+async def send_otp(payload: SendOtpRequest, session: AsyncSession = Depends(get_db)):
+    """
+    Dispatches a 6-digit OTP to the requested email for signup or password recovery.
+    Uses SMTP with the configured admin email (with development console fallback).
+    """
+    clean_email = payload.email.strip().lower()
+    if payload.purpose == "forgot_password":
+        stmt = select(Student).where(func.lower(Student.email) == clean_email)
+        user = (await session.execute(stmt)).scalar_one_or_none()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No account found with email '{clean_email}'.",
+            )
+    elif payload.purpose == "signup":
+        stmt = select(Student).where(func.lower(Student.email) == clean_email)
+        existing = (await session.execute(stmt)).scalar_one_or_none()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"An account with email '{clean_email}' already exists. Please log in.",
+            )
+
+    otp = generate_otp()
+    sent, _ = await send_otp_email(clean_email, otp, payload.purpose)
+    return {
+        "message": f"Verification code sent to {clean_email}.",
+        "email": clean_email,
+        "dispatched_via_smtp": sent,
+    }
+
+
+@app.post("/auth/verify-otp", tags=["Auth"])
+async def verify_otp(payload: VerifyOtpRequest):
+    """
+    Validates a submitted OTP without consuming it immediately.
+    """
+    valid = verify_stored_otp(payload.email, payload.purpose, payload.otp, consume=False)
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification code.",
+        )
+    return {"verified": True, "email": payload.email.strip().lower()}
+
+
+@app.post("/auth/forgot-password/reset", tags=["Auth"])
+async def reset_password(payload: ResetPasswordRequest, session: AsyncSession = Depends(get_db)):
+    """
+    Resets a user's password using a verified OTP.
+    """
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match.",
+        )
+    if len(payload.new_password) < 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 4 characters long.",
+        )
+
+    clean_email = payload.email.strip().lower()
+    valid = verify_stored_otp(clean_email, "forgot_password", payload.otp, consume=True)
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification code.",
+        )
+
+    stmt = select(Student).where(func.lower(Student.email) == clean_email)
+    user = (await session.execute(stmt)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User account not found.")
+
+    user.hashed_password = hash_password(payload.new_password)
+    await session.commit()
+    logger.info("Password successfully reset for user %s (%d)", user.email, user.id)
+    return {"message": "Password has been successfully reset. You can now log in with your new password."}
+
+
+@app.post("/auth/change-password", tags=["Auth"])
+async def change_password(
+    payload: ChangePasswordRequest,
+    current_user: Student = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Authenticated user changes their password by supplying old and new passwords.
+    """
+    if not verify_password(payload.old_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect current password.",
+        )
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New passwords do not match.",
+        )
+    if len(payload.new_password) < 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 4 characters long.",
+        )
+
+    current_user.hashed_password = hash_password(payload.new_password)
+    await session.commit()
+    logger.info("User %s (%d) changed password successfully", current_user.email, current_user.id)
+    return {"message": "Password changed successfully."}
+
+
+@app.put("/auth/profile", response_model=UserResponse, tags=["Auth"])
+async def update_profile(
+    payload: UpdateProfileRequest,
+    current_user: Student = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Updates the authenticated user's profile details (first name, last name, student ID, avatar).
+    """
+    if payload.first_name is not None:
+        current_user.first_name = payload.first_name.strip()
+    if payload.last_name is not None:
+        current_user.last_name = payload.last_name.strip()
+    if payload.student_id_str is not None:
+        current_user.student_id_str = payload.student_id_str.strip()
+    if payload.avatar_url is not None:
+        current_user.avatar_url = payload.avatar_url.strip()
+
+    full_name = f"{current_user.first_name or ''} {current_user.last_name or ''}".strip()
+    if full_name:
+        current_user.name = full_name
+    current_user.profile_completed = True
+
+    await session.commit()
+    await session.refresh(current_user)
+    return current_user
+
+
+@app.post("/auth/profile/avatar", response_model=UserResponse, tags=["Auth"])
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: Student = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Uploads a user avatar photo, saving it locally and uploading to Cloudinary if available.
+    """
+    avatar_dir = Path("uploads/avatars")
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+    clean_name = f"user_{current_user.id}_{Path(file.filename).name}"
+    dest_path = avatar_dir / clean_name
+
+    with open(dest_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    avatar_url = str(dest_path)
+    try:
+        cloud_res = await upload_file_to_cloudinary(
+            dest_path,
+            folder="autograde/avatars",
+            resource_type="image",
+        )
+        if cloud_res and cloud_res.get("secure_url"):
+            avatar_url = cloud_res.get("secure_url")
+    except Exception as e:
+        logger.warning("Cloudinary upload failed for avatar: %s", str(e))
+
+    current_user.avatar_url = avatar_url
+    await session.commit()
+    await session.refresh(current_user)
+    return current_user
+
 
 @app.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED, tags=["Auth"])
 @app.post("/auth/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED, tags=["Auth"])
@@ -200,6 +382,7 @@ async def register(
         email=email_clean,
         hashed_password=hashed_pw,
         role=user_role,
+        profile_completed=True,
     )
     if user_id is not None:
         new_user.id = user_id
@@ -219,7 +402,12 @@ async def register(
         role=new_user.role.value,
         user_id=new_user.id,
         name=new_user.name,
+        first_name=new_user.first_name,
+        last_name=new_user.last_name,
+        student_id_str=new_user.student_id_str,
         email=new_user.email,
+        avatar_url=new_user.avatar_url,
+        profile_completed=new_user.profile_completed,
     )
 
 
@@ -265,6 +453,7 @@ async def login(
                 email=email_clean,
                 hashed_password=hash_password(payload.password),
                 role=UserRole.admin,
+                profile_completed=True,
             )
             session.add(user)
             await session.commit()
@@ -291,7 +480,12 @@ async def login(
         role=user.role.value,
         user_id=user.id,
         name=user.name,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        student_id_str=user.student_id_str,
         email=user.email,
+        avatar_url=user.avatar_url,
+        profile_completed=user.profile_completed,
     )
 
 
@@ -304,6 +498,7 @@ async def google_auth(
     Authenticates a user via Google Sign-In ID token.
     If the email matches the configured admin email, sets the role to admin.
     Otherwise, registers them as a student.
+    Marks profile_completed = False for new users missing student ID so they can set it.
     """
     token_str = payload.credential.strip()
     if not token_str:
@@ -336,6 +531,7 @@ async def google_auth(
     name = id_info.get("name", "").strip() or email.split("@")[0]
     first_name = id_info.get("given_name", "").strip() or name
     last_name = id_info.get("family_name", "").strip() or ""
+    picture = id_info.get("picture", None)
     is_admin = is_admin_email(email)
 
     # Check if user already exists
@@ -348,10 +544,12 @@ async def google_auth(
             name=name,
             first_name=first_name,
             last_name=last_name,
-            student_id_str="ADMIN" if is_admin else email.split("@")[0],
+            student_id_str="ADMIN" if is_admin else "",
             email=email,
             hashed_password=hash_password(random_pw),
             role=UserRole.admin if is_admin else UserRole.student,
+            avatar_url=picture,
+            profile_completed=True if is_admin else False,  # Prompt student to add student ID
         )
         session.add(user)
         await session.commit()
@@ -373,12 +571,16 @@ async def google_auth(
         role=user.role.value,
         user_id=user.id,
         name=user.name,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        student_id_str=user.student_id_str,
         email=user.email,
+        avatar_url=user.avatar_url,
+        profile_completed=user.profile_completed,
     )
 
 
 @app.get("/auth/me", response_model=UserResponse, tags=["Auth"])
-
 async def get_my_profile(current_user: Student = Depends(get_current_user)):
     """Returns the profile of the currently authenticated user."""
     return current_user

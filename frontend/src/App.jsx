@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { getCurrentUser, clearAuthSession } from './api';
+import { getCurrentUser, clearAuthSession, getProfileApi } from './api';
 import Navbar from './components/Navbar';
 import LoginPage from './pages/LoginPage';
 import ClassroomPage from './pages/ClassroomPage';
 import ClassDetailPage from './pages/ClassDetailPage';
 import AdminPortalPage from './pages/AdminPortalPage';
+import ProfileModal from './components/ProfileModal';
+import LogoutConfirmModal from './components/LogoutConfirmModal';
+import CompleteProfileModal from './components/CompleteProfileModal';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
@@ -13,34 +16,64 @@ export default function App() {
   );
   const [selectedClassId, setSelectedClassId] = useState(null);
 
+  // Modal States
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
   useEffect(() => {
     const handleLogout = () => {
       clearAuthSession();
       setCurrentUser(null);
       setSelectedClassId(null);
       setCurrentView('classroom');
+      setIsProfileModalOpen(false);
+      setIsLogoutModalOpen(false);
     };
     window.addEventListener('auth-logout', handleLogout);
     return () => window.removeEventListener('auth-logout', handleLogout);
+  }, []);
+
+  // Fetch latest profile info on mount if logged in
+  useEffect(() => {
+    if (currentUser) {
+      getProfileApi()
+        .then((latest) => {
+          if (latest) {
+            setCurrentUser((prev) => ({ ...prev, ...latest }));
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   const handleLoginSuccess = (data) => {
     const userObj = {
       id: data.user_id,
       name: data.name,
+      first_name: data.first_name,
+      last_name: data.last_name,
+      student_id_str: data.student_id_str,
       email: data.email,
       role: data.role,
+      avatar_url: data.avatar_url,
+      profile_completed: data.profile_completed,
     };
     setCurrentUser(userObj);
     setSelectedClassId(null);
     setCurrentView(userObj.role === 'admin' ? 'admin-portal' : 'classroom');
   };
 
-  const handleLogout = () => {
+  const handleConfirmLogout = () => {
     clearAuthSession();
     setCurrentUser(null);
     setSelectedClassId(null);
     setCurrentView('classroom');
+    setIsLogoutModalOpen(false);
+    setIsProfileModalOpen(false);
+  };
+
+  const handleProfileUpdated = (updatedUser) => {
+    setCurrentUser((prev) => ({ ...prev, ...updatedUser }));
   };
 
   const handleNavigateView = (viewName) => {
@@ -53,13 +86,17 @@ export default function App() {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
 
+  // Check if profile needs initial completion (e.g. newly registered via Google)
+  const isProfileIncomplete = currentUser.profile_completed === false;
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Navbar
         currentUser={currentUser}
         currentView={selectedClassId ? 'classroom' : currentView}
         onNavigateView={handleNavigateView}
-        onLogout={handleLogout}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
+        onRequestLogout={() => setIsLogoutModalOpen(true)}
       />
       <main style={{ flexGrow: 1 }}>
         {selectedClassId ? (
@@ -83,7 +120,30 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Profile Modal */}
+      <ProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        currentUser={currentUser}
+        onProfileUpdated={handleProfileUpdated}
+      />
+
+      {/* Logout Confirmation Modal */}
+      <LogoutConfirmModal
+        isOpen={isLogoutModalOpen}
+        onClose={() => setIsLogoutModalOpen(false)}
+        onConfirm={handleConfirmLogout}
+      />
+
+      {/* Google Sign-Up Profile Completion Prompt */}
+      {isProfileIncomplete && (
+        <CompleteProfileModal
+          isOpen={true}
+          currentUser={currentUser}
+          onComplete={handleProfileUpdated}
+        />
+      )}
     </div>
   );
 }
-

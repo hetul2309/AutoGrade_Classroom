@@ -77,8 +77,13 @@ export async function loginApi(email, password) {
   setAuthSession(data.access_token, {
     id: data.user_id,
     name: data.name,
+    first_name: data.first_name,
+    last_name: data.last_name,
+    student_id_str: data.student_id_str,
     email: data.email,
     role: data.role,
+    avatar_url: data.avatar_url,
+    profile_completed: data.profile_completed,
   });
   return data;
 }
@@ -91,8 +96,13 @@ export async function registerApi(registerData) {
   setAuthSession(data.access_token, {
     id: data.user_id,
     name: data.name,
+    first_name: data.first_name,
+    last_name: data.last_name,
+    student_id_str: data.student_id_str,
     email: data.email,
     role: data.role,
+    avatar_url: data.avatar_url,
+    profile_completed: data.profile_completed,
   });
   return data;
 }
@@ -105,14 +115,79 @@ export async function googleLoginApi(credential) {
   setAuthSession(data.access_token, {
     id: data.user_id,
     name: data.name,
+    first_name: data.first_name,
+    last_name: data.last_name,
+    student_id_str: data.student_id_str,
     email: data.email,
     role: data.role,
+    avatar_url: data.avatar_url,
+    profile_completed: data.profile_completed,
   });
   return data;
 }
 
 export async function getProfileApi() {
-  return apiRequest('/auth/me');
+  const user = await apiRequest('/auth/me');
+  // Update cached user in storage
+  const current = getCurrentUser();
+  if (current) {
+    localStorage.setItem('user', JSON.stringify({ ...current, ...user }));
+  }
+  return user;
+}
+
+export async function updateProfileApi(profileData) {
+  const updatedUser = await apiRequest('/auth/profile', {
+    method: 'PUT',
+    body: JSON.stringify(profileData),
+  });
+  const current = getCurrentUser();
+  if (current) {
+    localStorage.setItem('user', JSON.stringify({ ...current, ...updatedUser }));
+  }
+  return updatedUser;
+}
+
+export async function uploadAvatarApi(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const updatedUser = await apiRequest('/auth/profile/avatar', {
+    method: 'POST',
+    body: formData,
+  });
+  const current = getCurrentUser();
+  if (current) {
+    localStorage.setItem('user', JSON.stringify({ ...current, ...updatedUser }));
+  }
+  return updatedUser;
+}
+
+export async function changePasswordApi(old_password, new_password, confirm_password) {
+  return apiRequest('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ old_password, new_password, confirm_password }),
+  });
+}
+
+export async function sendOtpApi(email, purpose = 'signup') {
+  return apiRequest('/auth/send-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email, purpose }),
+  });
+}
+
+export async function verifyOtpApi(email, otp, purpose = 'signup') {
+  return apiRequest('/auth/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp, purpose }),
+  });
+}
+
+export async function resetPasswordApi(email, otp, new_password, confirm_password) {
+  return apiRequest('/auth/forgot-password/reset', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp, new_password, confirm_password }),
+  });
 }
 
 // ── Admin Portal APIs ──

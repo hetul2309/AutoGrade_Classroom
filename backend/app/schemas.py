@@ -36,7 +36,12 @@ class TokenResponse(BaseModel):
     role: str
     user_id: int
     name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    student_id_str: Optional[str] = None
     email: str
+    avatar_url: Optional[str] = None
+    profile_completed: bool = True
 
 
 class UserResponse(BaseModel):
@@ -47,9 +52,42 @@ class UserResponse(BaseModel):
     student_id_str: Optional[str] = None
     email: str
     role: str
+    avatar_url: Optional[str] = None
+    profile_completed: bool = True
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+    confirm_password: str
+
+
+class UpdateProfileRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    student_id_str: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
+class SendOtpRequest(BaseModel):
+    email: str
+    purpose: str = "signup"  # "signup" or "forgot_password"
+
+
+class VerifyOtpRequest(BaseModel):
+    email: str
+    otp: str
+    purpose: str = "signup"
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp: str
+    new_password: str
+    confirm_password: str
 
 
 # ── Class Schemas ─────────────────────────────────────────────────────────────
