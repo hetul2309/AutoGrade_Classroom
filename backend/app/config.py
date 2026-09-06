@@ -21,6 +21,17 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
+    # Admin Credentials
+    ADMIN_EMAIL: str = ""
+    ADMIN_PASS: str = ""
+    ADMIN_PASSWORD: str = ""
+
+    # Cloudinary Storage
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+    CLOUDINARY_URL: str = ""
+
     # App
     ENVIRONMENT: str = "development"
     UPLOAD_DIR: str = "./uploads"

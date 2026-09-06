@@ -25,6 +25,8 @@ dependencies = [
     # Orchestration (Phase 5+)
     "langgraph>=0.2.0",
     "google-genai>=2.21.0",
+    "google-auth>=2.0.0",
+    "cloudinary>=1.40.0",
 ]
 
 [project.optional-dependencies]

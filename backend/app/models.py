@@ -167,6 +167,8 @@ class Assignment(Base):
     # Handout attachment for students (PDF / file)
     attachment_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     attachment_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cloudinary_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cloudinary_public_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -198,6 +200,8 @@ class Submission(Base):
     )
     # Path or reference to the stored .ipynb file
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    cloudinary_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cloudinary_public_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -44,6 +44,7 @@ from app.grading import (
 from app.models import Assignment, Grade, Student, Submission, SubmissionStatus
 from app.notebook_processing import process_notebook
 from app.similarity import SimilarityFlag, SubmissionText, find_similar_pairs
+from app.storage import ensure_local_file
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -149,8 +150,8 @@ async def preprocess_node(state: PipelineState) -> Dict[str, Any]:
                 "error": None,
             }
 
-            path = Path(sub.file_path)
-            if not path.exists():
+            path = await ensure_local_file(sub.file_path, getattr(sub, "cloudinary_url", None))
+            if not path or not path.exists():
                 err_msg = f"Notebook file not found at path: {sub.file_path}"
                 logger.warning(err_msg)
                 item["error"] = err_msg

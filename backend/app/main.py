@@ -66,6 +66,11 @@ from app.models import (
     UserRole,
 )
 from app.pipeline import run_grading_pipeline
+from app.storage import (
+    delete_file_from_cloudinary,
+    ensure_local_file,
+    upload_file_to_cloudinary,
+)
 from app.schemas import (
     AdminClassItem,
     AdminGradeItem,
@@ -119,6 +124,24 @@ async def health_check():
     return {"status": "healthy", "environment": settings.ENVIRONMENT}
 
 
+# ── Authentication Helpers ────────────────────────────────────────────────────
+
+def is_admin_email(email: Optional[str]) -> bool:
+    if not email:
+        return False
+    configured_admin = (settings.ADMIN_EMAIL or os.getenv("ADMIN_EMAIL", "")).strip().lower()
+    return bool(configured_admin and email.strip().lower() == configured_admin)
+
+
+def get_admin_pass() -> str:
+    return (
+        settings.ADMIN_PASS
+        or settings.ADMIN_PASSWORD
+        or os.getenv("ADMIN_PASS", "")
+        or os.getenv("ADMIN_PASSWORD", "")
+    ).strip()
+
+
 # ── Authentication Endpoints ──────────────────────────────────────────────────
 
 @app.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED, tags=["Auth"])
@@ -128,7 +151,7 @@ async def register(
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Registers a new user (teacher or student) into the AutoGrade platform.
+    Registers a new user (teacher, student, or admin) into the AutoGrade platform.
     Requires First Name, Last Name, Email, Student ID, Password, Confirm Password.
     """
     if payload.password != payload.confirm_password:
@@ -148,6 +171,7 @@ async def register(
     last_name_clean = payload.last_name.strip()
     student_id_clean = payload.student_id.strip()
     full_name = f"{first_name_clean} {last_name_clean}".strip() or "Student"
+    user_role = UserRole.admin if is_admin_email(email_clean) else UserRole.student
 
     # Check email uniqueness
     stmt = select(Student).where(func.lower(Student.email) == email_clean)
@@ -172,10 +196,10 @@ async def register(
         name=full_name,
         first_name=first_name_clean,
         last_name=last_name_clean,
-        student_id_str=student_id_clean,
+        student_id_str=student_id_clean or ("ADMIN" if user_role == UserRole.admin else ""),
         email=email_clean,
         hashed_password=hashed_pw,
-        role=UserRole.student,
+        role=user_role,
     )
     if user_id is not None:
         new_user.id = user_id
@@ -184,7 +208,7 @@ async def register(
     await session.commit()
     await session.refresh(new_user)
 
-    logger.info("New user registered: %s (%s, ID: %d)", new_user.name, new_user.email, new_user.id)
+    logger.info("New user registered: %s (%s, ID: %d, Role: %s)", new_user.name, new_user.email, new_user.id, new_user.role.value)
 
     access_token = create_access_token(
         data={"sub": str(new_user.id), "email": new_user.email, "role": new_user.role.value}
@@ -208,16 +232,55 @@ async def login(
     Authenticates a student or admin user with email and password.
     Returns a JWT access token containing the user's role and ID.
     """
-    stmt = select(Student).where(func.lower(Student.email) == payload.email.strip().lower())
+    email_clean = payload.email.strip().lower()
+    admin_pass = get_admin_pass()
+    is_admin = is_admin_email(email_clean)
+
+    stmt = select(Student).where(func.lower(Student.email) == email_clean)
     res = await session.execute(stmt)
     user = res.scalar_one_or_none()
 
-    if not user or not verify_password(payload.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    if is_admin:
+        # Check against configured admin password or DB password
+        pw_matches = False
+        if admin_pass and payload.password == admin_pass:
+            pw_matches = True
+        elif user and verify_password(payload.password, user.hashed_password):
+            pw_matches = True
+
+        if not pw_matches:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        if not user:
+            # Auto-provision the admin account
+            user = Student(
+                name="Admin User",
+                first_name="Admin",
+                last_name="User",
+                student_id_str="ADMIN",
+                email=email_clean,
+                hashed_password=hash_password(payload.password),
+                role=UserRole.admin,
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            logger.info("Admin user created automatically on login: %s (ID: %d)", user.email, user.id)
+        elif user.role != UserRole.admin:
+            user.role = UserRole.admin
+            await session.commit()
+            await session.refresh(user)
+    else:
+        if not user or not verify_password(payload.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     access_token = create_access_token(
         data={"sub": str(user.id), "email": user.email, "role": user.role.value}
@@ -239,7 +302,8 @@ async def google_auth(
 ):
     """
     Authenticates a user via Google Sign-In ID token.
-    If the user does not exist in the database, automatically registers them as a student.
+    If the email matches the configured admin email, sets the role to admin.
+    Otherwise, registers them as a student.
     """
     token_str = payload.credential.strip()
     if not token_str:
@@ -272,6 +336,7 @@ async def google_auth(
     name = id_info.get("name", "").strip() or email.split("@")[0]
     first_name = id_info.get("given_name", "").strip() or name
     last_name = id_info.get("family_name", "").strip() or ""
+    is_admin = is_admin_email(email)
 
     # Check if user already exists
     stmt = select(Student).where(func.lower(Student.email) == email)
@@ -283,15 +348,21 @@ async def google_auth(
             name=name,
             first_name=first_name,
             last_name=last_name,
-            student_id_str=email.split("@")[0],
+            student_id_str="ADMIN" if is_admin else email.split("@")[0],
             email=email,
             hashed_password=hash_password(random_pw),
-            role=UserRole.student,
+            role=UserRole.admin if is_admin else UserRole.student,
         )
         session.add(user)
         await session.commit()
         await session.refresh(user)
-        logger.info("New user registered via Google: %s (%s, ID: %d)", user.name, user.email, user.id)
+        logger.info("New user registered via Google: %s (%s, ID: %d, Role: %s)", user.name, user.email, user.id, user.role.value)
+    else:
+        if is_admin and user.role != UserRole.admin:
+            user.role = UserRole.admin
+            await session.commit()
+            await session.refresh(user)
+            logger.info("Promoted user %s to admin role upon Google sign-in", user.email)
 
     access_token = create_access_token(
         data={"sub": str(user.id), "email": user.email, "role": user.role.value}
@@ -316,7 +387,7 @@ async def get_my_profile(current_user: Student = Depends(get_current_user)):
 # ── Assignment Helper ─────────────────────────────────────────────────────────
 
 def format_assignment_response(a: Assignment) -> AssignmentResponse:
-    has_att = bool(a.attachment_path and os.path.exists(a.attachment_path))
+    has_att = bool((a.attachment_path and os.path.exists(a.attachment_path)) or a.cloudinary_url)
     return AssignmentResponse(
         id=a.id,
         class_id=a.class_id,
@@ -328,6 +399,7 @@ def format_assignment_response(a: Assignment) -> AssignmentResponse:
         deadline=a.deadline,
         attachment_name=a.attachment_name,
         has_attachment=has_att,
+        cloudinary_url=a.cloudinary_url,
         created_at=a.created_at,
     )
 
@@ -664,12 +736,26 @@ async def create_class_assignment(
             shutil.copyfileobj(attachment.file, f)
         assignment.attachment_path = str(dest_path)
         assignment.attachment_name = safe_name
+
+        # Upload attachment to Cloudinary if configured
+        try:
+            cloud_res = await upload_file_to_cloudinary(
+                dest_path,
+                folder=f"autograde/assignments/assignment_{assignment.id}",
+                resource_type="auto",
+            )
+            if cloud_res:
+                assignment.cloudinary_url = cloud_res.get("secure_url")
+                assignment.cloudinary_public_id = cloud_res.get("public_id")
+        except Exception as err:
+            logger.warning("Cloudinary upload failed for assignment %d attachment: %s", assignment.id, err)
+
         await session.commit()
         await session.refresh(assignment)
 
     logger.info(
-        "Admin %s created assignment id=%d in class id=%d (attachment=%s)",
-        admin_user.name, assignment.id, id, bool(assignment.attachment_path)
+        "Admin %s created assignment id=%d in class id=%d (attachment=%s, cloudinary=%s)",
+        admin_user.name, assignment.id, id, bool(assignment.attachment_path), bool(assignment.cloudinary_url)
     )
     return format_assignment_response(assignment, is_admin=True)
 
@@ -750,6 +836,19 @@ async def update_assignment(
                 shutil.copyfileobj(attachment.file, f)
             assignment.attachment_path = str(dest_path)
             assignment.attachment_name = safe_name
+
+            # Upload updated attachment to Cloudinary
+            try:
+                cloud_res = await upload_file_to_cloudinary(
+                    dest_path,
+                    folder=f"autograde/assignments/assignment_{assignment.id}",
+                    resource_type="auto",
+                )
+                if cloud_res:
+                    assignment.cloudinary_url = cloud_res.get("secure_url")
+                    assignment.cloudinary_public_id = cloud_res.get("public_id")
+            except Exception as err:
+                logger.warning("Cloudinary upload failed for updated assignment %d attachment: %s", assignment.id, err)
     else:
         # JSON Payload
         try:
@@ -800,11 +899,19 @@ async def download_assignment_attachment(
 ):
     """Downloads the TA's uploaded PDF or document handout for an assignment."""
     assignment = await session.get(Assignment, id)
-    if not assignment or not assignment.attachment_path or not os.path.exists(assignment.attachment_path):
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found.")
+
+    local_path = None
+    if assignment.attachment_path or assignment.cloudinary_url:
+        fallback_path = assignment.attachment_path or f"uploads/handouts/assignment_{id}/{assignment.attachment_name or 'handout.pdf'}"
+        local_path = await ensure_local_file(fallback_path, assignment.cloudinary_url)
+
+    if not local_path or not os.path.exists(local_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No handout attached for this assignment.")
 
     return FileResponse(
-        path=assignment.attachment_path,
+        path=str(local_path),
         filename=assignment.attachment_name or f"assignment_{id}_handout.pdf",
         media_type="application/octet-stream",
     )
@@ -951,11 +1058,28 @@ async def upload_submission(
     with open(saved_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
+    # Upload notebook to Cloudinary as raw file if configured
+    cloud_url = None
+    cloud_pub_id = None
+    try:
+        cloud_res = await upload_file_to_cloudinary(
+            saved_path,
+            folder=f"autograde/submissions/assignment_{assignment_id}",
+            resource_type="raw",
+        )
+        if cloud_res:
+            cloud_url = cloud_res.get("secure_url")
+            cloud_pub_id = cloud_res.get("public_id")
+    except Exception as err:
+        logger.warning("Cloudinary upload failed for submission student %d assignment %d: %s", current_user.id, assignment_id, err)
+
     # 5. Persist submission record (allow replacing/resubmitting notebook before deadline)
     if existing_sub:
         if existing_sub.grade:
             await session.delete(existing_sub.grade)
         existing_sub.file_path = str(saved_path.resolve())
+        existing_sub.cloudinary_url = cloud_url or existing_sub.cloudinary_url
+        existing_sub.cloudinary_public_id = cloud_pub_id or existing_sub.cloudinary_public_id
         existing_sub.submitted_at = now_utc
         existing_sub.status = SubmissionStatus.pending
         submission_obj = existing_sub
@@ -964,6 +1088,8 @@ async def upload_submission(
             assignment_id=assignment_id,
             student_id=current_user.id,
             file_path=str(saved_path.resolve()),
+            cloudinary_url=cloud_url,
+            cloudinary_public_id=cloud_pub_id,
             submitted_at=now_utc,
             status=SubmissionStatus.pending,
         )
@@ -972,8 +1098,8 @@ async def upload_submission(
     await session.commit()
     await session.refresh(submission_obj)
     logger.info(
-        "Student %s (id=%d) submitted/replaced notebook '%s' for assignment id=%d",
-        current_user.name, current_user.id, clean_filename, assignment_id
+        "Student %s (id=%d) submitted/replaced notebook '%s' for assignment id=%d (cloudinary=%s)",
+        current_user.name, current_user.id, clean_filename, assignment_id, bool(submission_obj.cloudinary_url)
     )
     return submission_obj
 
@@ -1238,13 +1364,17 @@ async def download_single_submission(
     Teacher downloads an individual student's uploaded .ipynb notebook file.
     """
     submission = await session.get(Submission, id)
-    if not submission or not submission.file_path or not os.path.exists(submission.file_path):
+    if not submission:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found.")
+
+    local_path = await ensure_local_file(submission.file_path, submission.cloudinary_url)
+    if not local_path or not os.path.exists(local_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Notebook submission file not found on disk."
+            detail="Notebook submission file not found on disk or remote storage."
         )
 
-    file_p = Path(submission.file_path)
+    file_p = Path(local_path)
     clean_name = file_p.name
     # Clean up name if it has internal prefixes
     if clean_name.startswith(f"assignment_{submission.assignment_id}_{submission.student_id}_"):
@@ -1284,7 +1414,13 @@ async def download_all_submissions_zip(
     )
     submissions = (await session.execute(stmt)).scalars().all()
 
-    valid_subs = [s for s in submissions if s.file_path and os.path.exists(s.file_path)]
+    # Pre-cache any remote files locally
+    valid_subs = []
+    for sub in submissions:
+        p = await ensure_local_file(sub.file_path, sub.cloudinary_url)
+        if p and os.path.exists(p):
+            valid_subs.append((sub, p))
+
     if not valid_subs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1293,8 +1429,7 @@ async def download_all_submissions_zip(
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for sub in valid_subs:
-            file_p = Path(sub.file_path)
+        for sub, file_p in valid_subs:
             clean_name = file_p.name
             if clean_name.startswith(f"assignment_{sub.assignment_id}_{sub.student_id}_"):
                 clean_name = clean_name[len(f"assignment_{sub.assignment_id}_{sub.student_id}_"):]
@@ -1421,8 +1556,8 @@ async def recheck_single_submission(
     from app.grading import grade_submission
     from app.similarity import SubmissionText, find_similar_pairs
 
-    path = Path(sub.file_path)
-    if not path.exists():
+    path = await ensure_local_file(sub.file_path, sub.cloudinary_url)
+    if not path or not path.exists():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Notebook file not found at {sub.file_path}")
 
     nb_result = process_notebook(path)

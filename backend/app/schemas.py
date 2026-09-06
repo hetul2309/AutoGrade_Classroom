@@ -127,6 +127,7 @@ class AssignmentResponse(BaseModel):
     results_published: bool = False
     attachment_name: Optional[str] = None
     has_attachment: bool = False
+    cloudinary_url: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -139,6 +140,7 @@ class SubmissionResponse(BaseModel):
     student_id: int
     assignment_id: int
     file_path: str
+    cloudinary_url: Optional[str] = None
     submitted_at: datetime
     status: str
 
