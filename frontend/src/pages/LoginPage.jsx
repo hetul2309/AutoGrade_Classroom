@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BookOpen, Lock, Mail, ArrowRight, Shield, AlertCircle, User, IdCard, UserPlus, LogIn, CheckCircle2 } from 'lucide-react';
-import { loginApi, registerApi } from '../api';
+import { loginApi, registerApi, googleLoginApi } from '../api';
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24">
@@ -40,7 +40,62 @@ export default function LoginPage({ onLoginSuccess }) {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [googleNotice, setGoogleNotice] = useState(false);
+
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+  const handleGoogleCredentialResponse = async (response) => {
+    if (!response || !response.credential) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await googleLoginApi(response.credential);
+      onLoginSuccess(data);
+    } catch (err) {
+      setError(err.message || 'Google authentication failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (window.google && clientId) {
+      try {
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleGoogleCredentialResponse,
+          auto_select: false,
+          cancel_on_tap_outside: true,
+        });
+
+        const container = document.getElementById('google-signin-btn-container');
+        if (container) {
+          container.innerHTML = '';
+          window.google.accounts.id.renderButton(container, {
+            theme: 'filled_blue',
+            size: 'large',
+            width: 388,
+            shape: 'rectangular',
+            text: 'continue_with',
+            logo_alignment: 'left',
+          });
+        }
+      } catch (err) {
+        console.warn('Google GSI Init failed:', err);
+      }
+    }
+  }, [clientId, mode]);
+
+  const handleManualGoogleClick = () => {
+    if (window.google && clientId) {
+      try {
+        window.google.accounts.id.prompt();
+      } catch {
+        setError('Could not display Google One-Tap prompt.');
+      }
+    } else {
+      setError('Google Sign-In is not configured yet. Please check VITE_GOOGLE_CLIENT_ID.');
+    }
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -87,11 +142,6 @@ export default function LoginPage({ onLoginSuccess }) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleGoogleClick = () => {
-    setGoogleNotice(true);
-    setTimeout(() => setGoogleNotice(false), 3500);
   };
 
   const fillCredentials = (demoEmail, demoPass) => {
@@ -209,58 +259,43 @@ export default function LoginPage({ onLoginSuccess }) {
           </div>
         )}
 
-        {/* Google SSO Notification */}
-        {googleNotice && (
-          <div style={{
-            padding: '12px 16px',
-            background: 'rgba(59, 130, 246, 0.15)',
-            border: '1px solid rgba(59, 130, 246, 0.35)',
-            borderRadius: '10px',
-            color: '#60a5fa',
-            fontSize: '0.88rem',
-            marginBottom: '20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px'
-          }}>
-            <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
-            <span>Google Sign In frontend connected. Backend OAuth will be linked soon!</span>
+        {/* Google SSO Button Container */}
+        <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
+          <div id="google-signin-btn-container" style={{ width: '100%', minHeight: '44px', display: 'flex', justifyContent: 'center' }}>
+            {/* Fallback button if GSI script still loading */}
+            <button
+              type="button"
+              onClick={handleManualGoogleClick}
+              style={{
+                width: '100%',
+                padding: '11px 16px',
+                background: 'rgba(255, 255, 255, 0.07)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '10px',
+                color: '#f3f4f6',
+                fontSize: '0.92rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px',
+                transition: 'background 0.2s, border-color 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.07)';
+                e.currentTarget.style.borderColor = 'var(--border-subtle)';
+              }}
+            >
+              <GoogleIcon />
+              <span>Continue with Google</span>
+            </button>
           </div>
-        )}
-
-        {/* Google SSO Button */}
-        <button
-          type="button"
-          onClick={handleGoogleClick}
-          style={{
-            width: '100%',
-            padding: '11px 16px',
-            background: 'rgba(255, 255, 255, 0.07)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '10px',
-            color: '#f3f4f6',
-            fontSize: '0.92rem',
-            fontWeight: '600',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '12px',
-            marginBottom: '20px',
-            transition: 'background 0.2s, border-color 0.2s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.07)';
-            e.currentTarget.style.borderColor = 'var(--border-subtle)';
-          }}
-        >
-          <GoogleIcon />
-          <span>Continue with Google</span>
-        </button>
+        </div>
 
         <div style={{
           display: 'flex',
@@ -274,6 +309,7 @@ export default function LoginPage({ onLoginSuccess }) {
           </span>
           <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
         </div>
+
 
         {/* ── Mode: Sign In Form ── */}
         {mode === 'login' ? (

@@ -37,9 +37,13 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import and_, desc, func, or_, select, update
+from sqlalchemy import and_, delete, desc, func, or_, select, String, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
 
 from app.auth import (
     create_access_token,
@@ -63,13 +67,18 @@ from app.models import (
 )
 from app.pipeline import run_grading_pipeline
 from app.schemas import (
+    AdminClassItem,
     AdminGradeItem,
+    AdminStatsResponse,
+    AdminSubmissionItem,
+    AdminUserItem,
     AssignmentCreateRequest,
     AssignmentResponse,
     ClassCreateRequest,
     ClassJoinRequest,
     ClassMemberResponse,
     ClassResponse,
+    GoogleAuthRequest,
     GradePatchRequest,
     LoginRequest,
     RegisterRequest,
@@ -79,6 +88,8 @@ from app.schemas import (
     TriggerGradingResponse,
     UserResponse,
 )
+
+
 
 
 logger = logging.getLogger("app.main")
@@ -221,7 +232,82 @@ async def login(
     )
 
 
+@app.post("/auth/google", response_model=TokenResponse, tags=["Auth"])
+async def google_auth(
+    payload: GoogleAuthRequest,
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Authenticates a user via Google Sign-In ID token.
+    If the user does not exist in the database, automatically registers them as a student.
+    """
+    token_str = payload.credential.strip()
+    if not token_str:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing Google credential token",
+        )
+
+    try:
+        client_id = settings.GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID") or None
+        id_info = id_token.verify_oauth2_token(
+            token_str,
+            google_requests.Request(),
+            audience=client_id if client_id else None,
+        )
+    except Exception as e:
+        logger.warning("Google token verification failed: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Google token: {str(e)}",
+        )
+
+    email = id_info.get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google account did not provide a verified email",
+        )
+
+    name = id_info.get("name", "").strip() or email.split("@")[0]
+    first_name = id_info.get("given_name", "").strip() or name
+    last_name = id_info.get("family_name", "").strip() or ""
+
+    # Check if user already exists
+    stmt = select(Student).where(func.lower(Student.email) == email)
+    user = (await session.execute(stmt)).scalar_one_or_none()
+
+    if not user:
+        random_pw = secrets.token_urlsafe(16)
+        user = Student(
+            name=name,
+            first_name=first_name,
+            last_name=last_name,
+            student_id_str=email.split("@")[0],
+            email=email,
+            hashed_password=hash_password(random_pw),
+            role=UserRole.student,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        logger.info("New user registered via Google: %s (%s, ID: %d)", user.name, user.email, user.id)
+
+    access_token = create_access_token(
+        data={"sub": str(user.id), "email": user.email, "role": user.role.value}
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        role=user.role.value,
+        user_id=user.id,
+        name=user.name,
+        email=user.email,
+    )
+
+
 @app.get("/auth/me", response_model=UserResponse, tags=["Auth"])
+
 async def get_my_profile(current_user: Student = Depends(get_current_user)):
     """Returns the profile of the currently authenticated user."""
     return current_user
@@ -1465,6 +1551,223 @@ async def trigger_grading_pipeline(
         return TriggerGradingResponse(
             message=f"Grading pipeline triggered for {count} submission(s).",
             assignment_id=id,
-            status="running",
-            details={"pending_count": count},
+            processed_count=count,
+            flagged_count=0,
         )
+
+
+# ── System Admin Portal Endpoints ─────────────────────────────────────────────
+
+@app.get("/admin/stats", response_model=AdminStatsResponse, tags=["Admin Portal"])
+async def get_admin_stats(
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """Returns platform-wide statistics for the admin dashboard."""
+    total_users = (await session.execute(select(func.count(Student.id)))).scalar() or 0
+    total_students = (await session.execute(select(func.count(Student.id)).where(Student.role == UserRole.student))).scalar() or 0
+    total_classes = (await session.execute(select(func.count(Class.id)))).scalar() or 0
+    total_assignments = (await session.execute(select(func.count(Assignment.id)))).scalar() or 0
+    total_submissions = (await session.execute(select(func.count(Submission.id)))).scalar() or 0
+    total_graded = (await session.execute(select(func.count(Grade.id)))).scalar() or 0
+
+    # Distinct instructors count
+    distinct_teachers = (await session.execute(select(func.count(func.distinct(Class.teacher_id))))).scalar() or 0
+
+    return AdminStatsResponse(
+        total_users=total_users,
+        total_students=total_students,
+        total_instructors=distinct_teachers,
+        total_classes=total_classes,
+        total_assignments=total_assignments,
+        total_submissions=total_submissions,
+        total_graded=total_graded,
+    )
+
+
+@app.get("/admin/users", response_model=List[AdminUserItem], tags=["Admin Portal"])
+async def get_admin_users(
+    search: Optional[str] = None,
+    role: Optional[str] = None,
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """
+    Returns all registered users in the database with their metadata and statistics.
+    Supports filtering by search query and role.
+    """
+    stmt = select(Student)
+
+    if role and role != "all":
+        stmt = stmt.where(Student.role == role)
+
+    if search and search.strip():
+        q = f"%{search.strip().lower()}%"
+        stmt = stmt.where(
+            or_(
+                func.lower(Student.name).like(q),
+                func.lower(Student.email).like(q),
+                func.lower(Student.student_id_str).like(q),
+                func.cast(Student.id, String).like(q),
+            )
+        )
+
+    stmt = stmt.order_by(Student.created_at.desc())
+    res = await session.execute(stmt)
+    users = res.scalars().all()
+
+    user_items = []
+    for u in users:
+        # Count enrolled classes
+        enrolled_res = await session.execute(
+            select(func.count(ClassEnrollment.id)).where(ClassEnrollment.student_id == u.id)
+        )
+        enrolled_count = enrolled_res.scalar() or 0
+
+        # Count teaching classes
+        teaching_res = await session.execute(
+            select(func.count(Class.id)).where(Class.teacher_id == u.id)
+        )
+        teaching_count = teaching_res.scalar() or 0
+
+        # Count submissions
+        subs_res = await session.execute(
+            select(func.count(Submission.id)).where(Submission.student_id == u.id)
+        )
+        subs_count = subs_res.scalar() or 0
+
+        user_items.append(
+            AdminUserItem(
+                id=u.id,
+                name=u.name,
+                first_name=u.first_name,
+                last_name=u.last_name,
+                email=u.email,
+                student_id_str=u.student_id_str,
+                role=u.role.value,
+                created_at=u.created_at,
+                enrolled_classes_count=enrolled_count,
+                teaching_classes_count=teaching_count,
+                submissions_count=subs_count,
+            )
+        )
+
+    return user_items
+
+
+@app.delete("/admin/users/{user_id}", tags=["Admin Portal"])
+async def delete_user(
+    user_id: int,
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """Deletes a user from the system. (Admin cannot delete themselves)."""
+    if user_id == admin_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own admin account.",
+        )
+
+    target_user = await session.get(Student, user_id)
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # Delete related enrollments, submissions, grades
+    await session.execute(delete(ClassEnrollment).where(ClassEnrollment.student_id == user_id))
+    await session.execute(delete(Grade).where(Grade.student_id == user_id))
+    await session.execute(delete(Submission).where(Submission.student_id == user_id))
+    await session.delete(target_user)
+    await session.commit()
+
+    logger.info("Admin %s deleted user ID %d (%s)", admin_user.email, user_id, target_user.email)
+    return {"message": f"User {target_user.name} ({target_user.email}) deleted successfully."}
+
+
+@app.get("/admin/classes", response_model=List[AdminClassItem], tags=["Admin Portal"])
+async def get_admin_classes(
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """Returns all classes across the system with teacher and student counts."""
+    classes = (await session.execute(select(Class).order_by(Class.created_at.desc()))).scalars().all()
+
+    class_items = []
+    for c in classes:
+        teacher = await session.get(Student, c.teacher_id)
+        teacher_name = teacher.name if teacher else "Unknown Faculty"
+        teacher_email = teacher.email if teacher else "N/A"
+
+        student_count = (await session.execute(
+            select(func.count(ClassEnrollment.id)).where(ClassEnrollment.class_id == c.id)
+        )).scalar() or 0
+
+        assignment_count = (await session.execute(
+            select(func.count(Assignment.id)).where(Assignment.class_id == c.id)
+        )).scalar() or 0
+
+        class_items.append(
+            AdminClassItem(
+                id=c.id,
+                name=c.name,
+                section=c.section,
+                code=c.code,
+                color=c.color,
+                teacher_id=c.teacher_id,
+                teacher_name=teacher_name,
+                teacher_email=teacher_email,
+                student_count=student_count,
+                assignment_count=assignment_count,
+                created_at=c.created_at,
+            )
+        )
+
+    return class_items
+
+
+@app.get("/admin/submissions", response_model=List[AdminSubmissionItem], tags=["Admin Portal"])
+async def get_admin_submissions(
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """Returns all student submissions across all courses with grade info."""
+    stmt = (
+        select(Submission)
+        .order_by(Submission.submitted_at.desc())
+        .limit(100)
+    )
+    submissions = (await session.execute(stmt)).scalars().all()
+
+    sub_items = []
+    for s in submissions:
+        student = await session.get(Student, s.student_id)
+        assignment = await session.get(Assignment, s.assignment_id)
+        cls = await session.get(Class, assignment.class_id) if assignment else None
+        grade = (await session.execute(
+            select(Grade).where(Grade.submission_id == s.id)
+        )).scalar_one_or_none()
+
+        sub_items.append(
+            AdminSubmissionItem(
+                id=s.id,
+                assignment_id=s.assignment_id,
+                assignment_title=assignment.title if assignment else "Unknown Assignment",
+                class_id=cls.id if cls else 0,
+                class_name=cls.name if cls else "Unknown Class",
+                student_id=s.student_id,
+                student_name=student.name if student else "Unknown Student",
+                student_email=student.email if student else "N/A",
+                file_name=s.original_filename or os.path.basename(s.file_path),
+                status=s.status.value,
+                marks=grade.marks if grade else None,
+                max_marks=assignment.max_marks if assignment else None,
+                flagged=grade.flagged if grade else False,
+                submitted_at=s.submitted_at,
+                graded_at=grade.graded_at if grade else None,
+            )
+        )
+
+    return sub_items
+

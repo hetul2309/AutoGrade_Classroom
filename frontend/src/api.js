@@ -97,9 +97,51 @@ export async function registerApi(registerData) {
   return data;
 }
 
+export async function googleLoginApi(credential) {
+  const data = await apiRequest('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ credential }),
+  });
+  setAuthSession(data.access_token, {
+    id: data.user_id,
+    name: data.name,
+    email: data.email,
+    role: data.role,
+  });
+  return data;
+}
+
 export async function getProfileApi() {
   return apiRequest('/auth/me');
 }
+
+// ── Admin Portal APIs ──
+export async function getAdminStatsApi() {
+  return apiRequest('/admin/stats');
+}
+
+export async function getAdminUsersApi(search = '', role = 'all') {
+  const params = new URLSearchParams();
+  if (search) params.append('search', search);
+  if (role && role !== 'all') params.append('role', role);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiRequest(`/admin/users${qs}`);
+}
+
+export async function deleteUserApi(userId) {
+  return apiRequest(`/admin/users/${userId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getAdminAllClassesApi() {
+  return apiRequest('/admin/classes');
+}
+
+export async function getAdminAllSubmissionsApi() {
+  return apiRequest('/admin/submissions');
+}
+
 
 // ── Assignments APIs ──
 export async function getAssignmentsApi() {

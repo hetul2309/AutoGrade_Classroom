@@ -2,17 +2,17 @@ import React from 'react';
 import { BookOpen, LogOut, Shield, User, Sparkles } from 'lucide-react';
 import { clearAuthSession } from '../api';
 
-export default function Navbar({ currentUser, onNavigateHome, onLogout }) {
+export default function Navbar({ currentUser, currentView, onNavigateView, onLogout }) {
   const isAdmin = currentUser?.role === 'admin';
 
   return (
     <header className="glass-panel" style={{ borderRadius: '0', borderLeft: 'none', borderRight: 'none', borderTop: 'none', position: 'sticky', top: 0, zIndex: 40 }}>
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ maxWidth: '1360px', margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         {/* Brand */}
         <div
-          onClick={onNavigateHome}
+          onClick={() => onNavigateView(isAdmin ? 'admin-portal' : 'classroom')}
           style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
-          title="Back to All Classes"
+          title={isAdmin ? "Go to Admin Portal" : "Go to My Classes"}
         >
           <div style={{
             width: '38px',
@@ -31,26 +31,64 @@ export default function Navbar({ currentUser, onNavigateHome, onLogout }) {
               <span style={{ fontFamily: 'var(--font-heading)', fontSize: '1.2rem', fontWeight: '700', letterSpacing: '-0.02em' }}>
                 AutoGrade <span style={{ color: 'var(--accent-cyan)' }}>Classroom</span>
               </span>
-              <span className={`badge ${isAdmin ? 'badge-processing' : 'badge-graded'}`} style={{ fontSize: '0.68rem', padding: '2px 8px' }}>
-                <Shield size={10} /> {isAdmin ? 'Teacher / TA' : 'Student'}
+              <span className={`badge ${isAdmin ? 'badge-graded' : 'badge-pending'}`} style={{ fontSize: '0.68rem', padding: '2px 8px' }}>
+                <Shield size={10} /> {isAdmin ? 'Admin' : 'Student'}
               </span>
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-              Multi-Class Automated Grading & Plagiarism Platform
+              AI Automated Notebook Grading & Classroom Platform
             </div>
           </div>
         </div>
 
         {/* User Info & Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {isAdmin && (
+            <button
+              id="nav-admin-portal-btn"
+              onClick={() => onNavigateView('admin-portal')}
+              style={{
+                fontSize: '0.84rem',
+                padding: '7px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: '600',
+                background: currentView === 'admin-portal' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.06)',
+                color: currentView === 'admin-portal' ? '#fff' : 'var(--text-muted)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Shield size={14} />
+              <span>Admin Portal</span>
+            </button>
+          )}
+
           <button
-            onClick={onNavigateHome}
-            className="btn-ghost"
-            style={{ fontSize: '0.82rem', padding: '7px 12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            id="nav-my-classes-btn"
+            onClick={() => onNavigateView('classroom')}
+            style={{
+              fontSize: '0.84rem',
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: '600',
+              background: currentView === 'classroom' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.06)',
+              color: currentView === 'classroom' ? '#fff' : 'var(--text-muted)',
+              transition: 'all 0.15s ease',
+            }}
           >
-            <BookOpen size={15} />
+            <BookOpen size={14} />
             <span>My Classes</span>
           </button>
+
 
           {currentUser && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 12px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '999px', border: '1px solid var(--border-subtle)' }}>

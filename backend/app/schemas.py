@@ -16,6 +16,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class GoogleAuthRequest(BaseModel):
+    credential: str
+
+
 class RegisterRequest(BaseModel):
     first_name: str
     last_name: str
@@ -23,6 +27,7 @@ class RegisterRequest(BaseModel):
     student_id: str
     password: str
     confirm_password: str
+
 
 
 class TokenResponse(BaseModel):
@@ -189,5 +194,64 @@ class TriggerGradingResponse(BaseModel):
     """Response returned when triggering the grading pipeline."""
     message: str
     assignment_id: int
+    processed_count: int
+    flagged_count: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── Admin Portal Schemas ──────────────────────────────────────────────────────
+
+class AdminStatsResponse(BaseModel):
+    total_users: int
+    total_students: int
+    total_instructors: int
+    total_classes: int
+    total_assignments: int
+    total_submissions: int
+    total_graded: int
+
+
+class AdminUserItem(BaseModel):
+    id: int
+    name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: str
+    student_id_str: Optional[str] = None
+    role: str
+    created_at: datetime
+    enrolled_classes_count: int = 0
+    teaching_classes_count: int = 0
+    submissions_count: int = 0
+
+
+class AdminClassItem(BaseModel):
+    id: int
+    name: str
+    section: Optional[str] = None
+    code: str
+    color: str
+    teacher_id: int
+    teacher_name: str
+    teacher_email: str
+    student_count: int
+    assignment_count: int
+    created_at: datetime
+
+
+class AdminSubmissionItem(BaseModel):
+    id: int
+    assignment_id: int
+    assignment_title: str
+    class_id: int
+    class_name: str
+    student_id: int
+    student_name: str
+    student_email: str
+    file_name: str
     status: str
-    details: Optional[dict] = None
+    marks: Optional[float] = None
+    max_marks: Optional[float] = None
+    flagged: bool = False
+    submitted_at: datetime
+    graded_at: Optional[datetime] = None

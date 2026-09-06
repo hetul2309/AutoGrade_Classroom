@@ -17,15 +17,20 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-flash-latest"
     ANTHROPIC_API_KEY: str = ""
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+
     # App
     ENVIRONMENT: str = "development"
     UPLOAD_DIR: str = "./uploads"
 
     model_config = SettingsConfigDict(
-        env_file="../.env",
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
 
 
 @lru_cache
