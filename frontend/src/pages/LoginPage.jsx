@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Lock, Mail, ArrowRight, Shield, AlertCircle, User, IdCard, UserPlus, LogIn, CheckCircle2 } from 'lucide-react';
+import {
+  BookOpen, Lock, Mail, ArrowRight, Shield, AlertCircle,
+  User, IdCard, UserPlus, LogIn, CheckCircle2, Eye, EyeOff
+} from 'lucide-react';
 import { loginApi, registerApi, googleLoginApi } from '../api';
 
 const GoogleIcon = () => (
@@ -29,6 +32,7 @@ export default function LoginPage({ onLoginSuccess }) {
   // Login state
   const [loginEmail, setLoginEmail] = useState('admin@mlcourse.edu');
   const [loginPassword, setLoginPassword] = useState('admin123');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   // Sign up state
   const [firstName, setFirstName] = useState('');
@@ -37,6 +41,9 @@ export default function LoginPage({ onLoginSuccess }) {
   const [studentId, setStudentId] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -341,14 +348,35 @@ export default function LoginPage({ onLoginSuccess }) {
                 <Lock size={18} color="var(--text-dim)" style={{ position: 'absolute', left: '14px', top: '12px' }} />
                 <input
                   id="login-password-input"
-                  type="password"
+                  type={showLoginPassword ? 'text' : 'password'}
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   className="form-input"
-                  style={{ paddingLeft: '42px' }}
-                  placeholder="••••••••"
+                  style={{ paddingLeft: '42px', paddingRight: '42px' }}
+                  placeholder="Enter your password"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPassword(!showLoginPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    color: showLoginPassword ? 'var(--accent-cyan)' : 'var(--text-dim)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title={showLoginPassword ? "Hide password" : "Show password"}
+                >
+                  {showLoginPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
@@ -458,14 +486,35 @@ export default function LoginPage({ onLoginSuccess }) {
                 <Lock size={16} color="var(--text-dim)" style={{ position: 'absolute', left: '12px', top: '11px' }} />
                 <input
                   id="signup-password"
-                  type="password"
+                  type={showSignupPassword ? 'text' : 'password'}
                   value={signupPassword}
                   onChange={(e) => setSignupPassword(e.target.value)}
                   className="form-input"
-                  style={{ paddingLeft: '36px', fontSize: '0.88rem' }}
-                  placeholder="At least 6 characters"
+                  style={{ paddingLeft: '36px', paddingRight: '36px', fontSize: '0.88rem' }}
+                  placeholder="Enter your password (min 6 chars)"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowSignupPassword(!showSignupPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    color: showSignupPassword ? 'var(--accent-cyan)' : 'var(--text-dim)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title={showSignupPassword ? "Hide password" : "Show password"}
+                >
+                  {showSignupPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
             </div>
 
@@ -477,16 +526,38 @@ export default function LoginPage({ onLoginSuccess }) {
                 <Lock size={16} color="var(--text-dim)" style={{ position: 'absolute', left: '12px', top: '11px' }} />
                 <input
                   id="signup-confirm-password"
-                  type="password"
+                  type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="form-input"
-                  style={{ paddingLeft: '36px', fontSize: '0.88rem' }}
-                  placeholder="Re-enter password"
+                  style={{ paddingLeft: '36px', paddingRight: '36px', fontSize: '0.88rem' }}
+                  placeholder="Re-enter your password"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    color: showConfirmPassword ? 'var(--accent-cyan)' : 'var(--text-dim)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title={showConfirmPassword ? "Hide password" : "Show password"}
+                >
+                  {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
             </div>
+
 
             <button
               id="signup-submit-btn"
