@@ -1666,8 +1666,8 @@ async def trigger_grading_pipeline(
         return TriggerGradingResponse(
             message="No submissions found to grade for this assignment.",
             assignment_id=id,
-            status="idle",
-            details={"pending_count": 0},
+            processed_count=0,
+            flagged_count=0,
         )
 
     # Launch pipeline
@@ -1677,8 +1677,8 @@ async def trigger_grading_pipeline(
         return TriggerGradingResponse(
             message=f"Grading pipeline completed for {count} submission(s).",
             assignment_id=id,
-            status="completed" if state.get("completed") else "failed",
-            details={"processed": count, "errors": state.get("errors", [])},
+            processed_count=count,
+            flagged_count=len([s for s in state.get("submissions", []) if s.get("similarity_flag")]),
         )
     else:
         # Background task for Message Batches API

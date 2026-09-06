@@ -238,6 +238,11 @@ async def test_student_cannot_access_other_students_grades(api_client, seed_user
     bob = seed_users["student_b"]
 
     async with AsyncSessionLocal() as session:
+        # Enable published results so student grades can be viewed
+        db_ass = await session.get(Assignment, test_assignment.id)
+        if db_ass:
+            db_ass.results_published = True
+
         # Create Alice's submission + grade
         sub_a = Submission(
             assignment_id=test_assignment.id,
