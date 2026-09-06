@@ -30,9 +30,10 @@ export default function LoginPage({ onLoginSuccess }) {
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
 
   // Login state
-  const [loginEmail, setLoginEmail] = useState('admin@mlcourse.edu');
-  const [loginPassword, setLoginPassword] = useState('admin123');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+
 
   // Sign up state
   const [firstName, setFirstName] = useState('');
@@ -334,9 +335,10 @@ export default function LoginPage({ onLoginSuccess }) {
                   onChange={(e) => setLoginEmail(e.target.value)}
                   className="form-input"
                   style={{ paddingLeft: '42px' }}
-                  placeholder="e.g. yourname@university.edu"
+                  placeholder="Enter your email address"
                   required
                 />
+
               </div>
             </div>
 
