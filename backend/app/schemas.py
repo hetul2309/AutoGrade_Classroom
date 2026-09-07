@@ -244,6 +244,7 @@ class TriggerGradingResponse(BaseModel):
 class AdminStatsResponse(BaseModel):
     total_users: int
     total_students: int
+    total_admins: int = 0
     total_instructors: int
     total_classes: int
     total_assignments: int

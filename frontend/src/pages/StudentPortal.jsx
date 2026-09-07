@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { getAssignmentsApi, getMyGradesApi, uploadSubmissionApi } from '../api';
 import Toast from '../components/Toast';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function StudentPortal({ currentUser }) {
   const [activeTab, setActiveTab] = useState('assignments'); // 'assignments' | 'grades'
@@ -104,6 +105,14 @@ export default function StudentPortal({ currentUser }) {
   const isDeadlinePassed = (deadlineStr) => {
     return new Date() > new Date(deadlineStr);
   };
+
+  if (loading) {
+    return (
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '32px 24px' }}>
+        <LoadingSpinner text="Loading assignments & grades..." size={60} minHeight="450px" />
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '32px 24px' }}>
@@ -230,9 +239,21 @@ export default function StudentPortal({ currentUser }) {
                   <div style={{ marginBottom: '20px' }}>
                     <button
                       onClick={() => toggleRubric(assignment.id)}
-                      className="btn-ghost"
-                      style={{ padding: '4px 0', fontSize: '0.82rem', color: 'var(--accent-cyan)' }}
+                      className="btn-secondary"
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.82rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        ...(hasRubricExpanded ? {
+                          borderColor: 'var(--border-active)',
+                          background: 'var(--bg-card-hover)',
+                          color: 'var(--primary)',
+                        } : {})
+                      }}
                     >
+                      <FileText size={15} color={hasRubricExpanded ? 'var(--primary)' : 'var(--accent-cyan)'} />
                       <span>{hasRubricExpanded ? 'Hide Grading Rubric' : 'View Grading Rubric & Breakdown'}</span>
                       {hasRubricExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                     </button>
@@ -241,14 +262,15 @@ export default function StudentPortal({ currentUser }) {
                       <div style={{
                         marginTop: '10px',
                         padding: '14px 18px',
-                        background: 'rgba(15, 23, 42, 0.75)',
+                        background: 'var(--bg-surface)',
                         border: '1px solid var(--border-subtle)',
                         borderRadius: '10px',
                         fontSize: '0.84rem',
                         lineHeight: '1.6',
-                        color: 'var(--text-muted)',
+                        color: 'var(--text-main)',
                         whiteSpace: 'pre-wrap',
-                        fontFamily: 'var(--font-mono)'
+                        fontFamily: 'var(--font-mono)',
+                        boxShadow: 'var(--shadow-card)'
                       }}>
                         {assignment.rubric_text}
                       </div>

@@ -8,6 +8,7 @@ import AdminPortalPage from './pages/AdminPortalPage';
 import ProfileModal from './components/ProfileModal';
 import LogoutConfirmModal from './components/LogoutConfirmModal';
 import CompleteProfileModal from './components/CompleteProfileModal';
+import Toast from './components/Toast';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
@@ -15,6 +16,31 @@ export default function App() {
     getCurrentUser()?.role === 'admin' ? 'admin-portal' : 'classroom'
   );
   const [selectedClassId, setSelectedClassId] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  // Theme Management (Default: Light Mode)
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('autograde_theme') || 'light';
+    } catch {
+      return 'light';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('autograde_theme', theme);
+    } catch {}
+  }, [theme]);
+
+  const handleToggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
+  const handleSetTheme = (newTheme) => {
+    setTheme(newTheme);
+  };
 
   // Modal States
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -28,6 +54,7 @@ export default function App() {
       setCurrentView('classroom');
       setIsProfileModalOpen(false);
       setIsLogoutModalOpen(false);
+      setToast({ message: 'You have been logged out successfully.', type: 'success' });
     };
     window.addEventListener('auth-logout', handleLogout);
     return () => window.removeEventListener('auth-logout', handleLogout);
@@ -70,6 +97,7 @@ export default function App() {
     setCurrentView('classroom');
     setIsLogoutModalOpen(false);
     setIsProfileModalOpen(false);
+    setToast({ message: 'You have been logged out successfully.', type: 'success' });
   };
 
   const handleProfileUpdated = (updatedUser) => {
@@ -83,7 +111,22 @@ export default function App() {
 
   // If not logged in, show Login Page
   if (!currentUser) {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <>
+        <LoginPage
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+          onLoginSuccess={handleLoginSuccess}
+        />
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+      </>
+    );
   }
 
   // Check if profile needs initial completion (e.g. newly registered via Google)
@@ -94,6 +137,8 @@ export default function App() {
       <Navbar
         currentUser={currentUser}
         currentView={selectedClassId ? 'classroom' : currentView}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
         onNavigateView={handleNavigateView}
         onOpenProfile={() => setIsProfileModalOpen(true)}
         onRequestLogout={() => setIsLogoutModalOpen(true)}
@@ -126,6 +171,8 @@ export default function App() {
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         currentUser={currentUser}
+        theme={theme}
+        onSetTheme={handleSetTheme}
         onProfileUpdated={handleProfileUpdated}
       />
 
@@ -142,6 +189,15 @@ export default function App() {
           isOpen={true}
           currentUser={currentUser}
           onComplete={handleProfileUpdated}
+        />
+      )}
+
+      {/* Global Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
         />
       )}
     </div>

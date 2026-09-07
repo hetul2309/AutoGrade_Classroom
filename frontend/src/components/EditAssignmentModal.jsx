@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Edit3, Calendar, FileUp, FileText, CheckCircle, ShieldAlert, Cpu, Sparkles } from 'lucide-react';
+import { X, Edit3, Calendar, FileUp, FileText, CheckCircle, Cpu, Sparkles } from 'lucide-react';
 import { updateAssignmentApi } from '../api';
 
 export default function EditAssignmentModal({ assignment, onClose, onUpdated }) {
@@ -8,7 +8,6 @@ export default function EditAssignmentModal({ assignment, onClose, onUpdated }) 
     if (!isoStr) return '';
     try {
       const d = new Date(isoStr);
-      // Local time slice
       const offsetMs = d.getTimezoneOffset() * 60000;
       const local = new Date(d.getTime() - offsetMs);
       return local.toISOString().slice(0, 16);
@@ -68,61 +67,92 @@ export default function EditAssignmentModal({ assignment, onClose, onUpdated }) 
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '740px' }}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '720px' }}>
         {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'linear-gradient(135deg, #f59e0b, #ec4899)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'var(--primary-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-glow)' }}>
               <Edit3 size={20} color="#fff" />
             </div>
             <div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: '700' }}>Edit Assignment & Extend Deadline</h3>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                Update instructions given to students, extend submission deadline, or tweak LLM prompt
+              <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>Edit Assignment</h3>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Update instructions given to students, adjust submission deadline, or refine the AI grading rubric
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="btn-ghost" style={{ padding: '6px' }}>
+          <button onClick={onClose} className="btn-ghost" style={{ padding: '6px', borderRadius: '8px' }}>
             <X size={20} />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+        <form onSubmit={handleSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {error && (
-            <div style={{ padding: '12px 16px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', color: '#f87171', fontSize: '0.88rem' }}>
+            <div style={{ padding: '12px 16px', background: 'var(--status-flagged-bg)', border: '1px solid var(--status-flagged-border)', borderRadius: '10px', color: 'var(--status-flagged-text)', fontSize: '0.88rem' }}>
               {error}
             </div>
           )}
 
-          {/* Quick Deadline Extensions */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', color: '#fbbf24', fontWeight: '600' }}>
-              <Calendar size={16} /> Quick Extend Deadline:
+          {/* Quick Deadline Extensions Toolbar */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 16px',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: '10px',
+            flexWrap: 'wrap',
+            gap: '10px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem', color: 'var(--primary)', fontWeight: '600' }}>
+              <Calendar size={16} />
+              <span>Quick Extend Deadline:</span>
             </div>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button type="button" onClick={() => addDaysToDeadline(1)} className="btn-ghost" style={{ fontSize: '0.78rem', padding: '4px 10px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => addDaysToDeadline(1)}
+                className="btn-secondary"
+                style={{ fontSize: '0.78rem', padding: '5px 12px', borderRadius: '6px' }}
+              >
                 +1 Day
               </button>
-              <button type="button" onClick={() => addDaysToDeadline(3)} className="btn-ghost" style={{ fontSize: '0.78rem', padding: '4px 10px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+              <button
+                type="button"
+                onClick={() => addDaysToDeadline(3)}
+                className="btn-secondary"
+                style={{ fontSize: '0.78rem', padding: '5px 12px', borderRadius: '6px' }}
+              >
                 +3 Days
               </button>
-              <button type="button" onClick={() => addDaysToDeadline(7)} className="btn-ghost" style={{ fontSize: '0.78rem', padding: '4px 10px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+              <button
+                type="button"
+                onClick={() => addDaysToDeadline(7)}
+                className="btn-secondary"
+                style={{ fontSize: '0.78rem', padding: '5px 12px', borderRadius: '6px' }}
+              >
                 +1 Week
               </button>
             </div>
           </div>
 
           {/* SECTION 1: STUDENT FACING DETAILS */}
-          <div style={{ padding: '18px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-subtle)', borderRadius: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', color: 'var(--accent-cyan)' }}>
-              <FileText size={18} />
-              <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>1. Student-Facing Materials & Instructions</span>
+          <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '12px', borderLeft: '4px solid var(--primary)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+              <FileText size={18} color="var(--primary)" />
+              <h4 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
+                1. Student Materials & Problem Statement
+              </h4>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginLeft: 'auto' }}>
+                Visible to students
+              </span>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
                   Assignment Title *
                 </label>
                 <input
@@ -131,12 +161,12 @@ export default function EditAssignmentModal({ assignment, onClose, onUpdated }) 
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g. Lab 2: Support Vector Machines & Kernels"
-                  className="input-field"
+                  className="form-input"
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
                   Student Instructions & Problem Statement *
                 </label>
                 <textarea
@@ -145,14 +175,14 @@ export default function EditAssignmentModal({ assignment, onClose, onUpdated }) 
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Explain the lab assignment objectives, problem statement, and expected deliverables to students..."
-                  className="input-field"
+                  className="form-input"
                   style={{ resize: 'vertical' }}
                 />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
                     Submission Deadline *
                   </label>
                   <input
@@ -160,11 +190,11 @@ export default function EditAssignmentModal({ assignment, onClose, onUpdated }) 
                     required
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
-                    className="input-field"
+                    className="form-input"
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
                     Maximum Marks *
                   </label>
                   <input
@@ -174,43 +204,44 @@ export default function EditAssignmentModal({ assignment, onClose, onUpdated }) 
                     required
                     value={maxMarks}
                     onChange={(e) => setMaxMarks(Number(e.target.value))}
-                    className="input-field"
+                    className="form-input"
                   />
                 </div>
               </div>
 
               {/* PDF Handout Attachment */}
-              <div style={{ marginTop: '6px' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '6px' }}>
-                  Replace Attached Lab Handout / PDF (Optional)
+              <div style={{ marginTop: '4px' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  Replace Attached Lab Handout / Reference PDF (Optional)
                 </label>
                 <div style={{
                   border: '2px dashed var(--border-subtle)',
                   borderRadius: '10px',
                   padding: '16px',
                   textAlign: 'center',
-                  background: 'rgba(0, 0, 0, 0.2)',
-                  cursor: 'pointer'
+                  background: 'var(--input-bg)',
+                  cursor: 'pointer',
+                  transition: 'border-color 0.2s ease'
                 }}>
                   <input
                     type="file"
                     id="edit-handout-upload"
                     accept=".pdf,.doc,.docx,.txt"
-                    onChange={(e) => setAttachment(e.target.files[0])}
+                    onChange={(e) => setAttachment(e.target.files[0] || null)}
                     style={{ display: 'none' }}
                   />
                   <label htmlFor="edit-handout-upload" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                    <FileUp size={24} color="var(--accent-cyan)" />
+                    <FileUp size={22} color="var(--primary)" />
                     {attachment ? (
-                      <span style={{ fontSize: '0.88rem', color: 'var(--accent-green)', fontWeight: '600' }}>
-                        Selected new file: {attachment.name} ({(attachment.size / 1024).toFixed(1)} KB)
+                      <span style={{ fontSize: '0.86rem', color: 'var(--status-graded-text)', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <CheckCircle size={15} /> Selected: {attachment.name} ({(attachment.size / 1024).toFixed(1)} KB)
                       </span>
                     ) : assignment.has_attachment ? (
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        Currently attached: <strong style={{ color: '#fff' }}>{assignment.attachment_name}</strong>. Click here to upload a replacement.
+                      <span style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+                        Currently attached: <strong style={{ color: 'var(--text-main)' }}>{assignment.attachment_name}</strong>. Click here to upload a replacement.
                       </span>
                     ) : (
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      <span style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
                         Click to upload a PDF or document handout for students to download
                       </span>
                     )}
@@ -221,23 +252,25 @@ export default function EditAssignmentModal({ assignment, onClose, onUpdated }) 
           </div>
 
           {/* SECTION 2: LLM PROMPT & GRADING RUBRIC */}
-          <div style={{ padding: '18px', background: 'rgba(99, 102, 241, 0.04)', border: '1px solid rgba(99, 102, 241, 0.25)', borderRadius: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+          <div className="glass-panel" style={{ padding: '18px 20px', borderRadius: '12px', borderLeft: '4px solid var(--accent-purple)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-purple)' }}>
                 <Cpu size={18} />
-                <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>2. AI Notebook File Checker — LLM Prompt & Rubric</span>
+                <h4 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
+                  2. AI Notebook Evaluator — Grading Rubric
+                </h4>
               </div>
-              <span className="badge badge-purple" style={{ fontSize: '0.72rem' }}>
-                Token-Efficient Text Only
+              <span className="badge badge-pending" style={{ fontSize: '0.72rem' }}>
+                AI Evaluator
               </span>
             </div>
 
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)', marginBottom: '12px' }}>
-              Provide the exact evaluation criteria and mark allocation. This textual rubric is passed directly into Gemini/Claude to score student notebooks.
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '12px' }}>
+              Provide the exact evaluation criteria and mark allocation. This textual rubric is passed directly into the AI evaluator to score student notebooks.
             </p>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
                 LLM Grading Rubric & Evaluation Prompt *
               </label>
               <textarea
@@ -246,8 +279,8 @@ export default function EditAssignmentModal({ assignment, onClose, onUpdated }) 
                 value={rubricText}
                 onChange={(e) => setRubricText(e.target.value)}
                 placeholder="List criteria, weights, edge cases, and expected outputs for each task..."
-                className="input-field"
-                style={{ fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: '1.45', resize: 'vertical' }}
+                className="form-input"
+                style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', lineHeight: '1.5', resize: 'vertical' }}
               />
             </div>
           </div>
@@ -261,9 +294,9 @@ export default function EditAssignmentModal({ assignment, onClose, onUpdated }) 
               type="submit"
               className="btn-primary"
               disabled={saving}
-              style={{ background: 'linear-gradient(135deg, #f59e0b, #ec4899)', minWidth: '160px' }}
+              style={{ minWidth: '150px' }}
             >
-              {saving ? 'Saving Changes...' : 'Save & Update Assignment'}
+              {saving ? 'Saving Changes...' : 'Save Changes'}
             </button>
           </div>
         </form>

@@ -48,12 +48,12 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
       animation: 'fadeIn 0.2s ease-out'
     }}>
       <div style={{
-        background: '#131b2e',
+        background: 'var(--modal-bg, #131b2e)',
         border: '1px solid var(--border-subtle)',
         borderRadius: '20px',
         width: '100%',
         maxWidth: '480px',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9), 0 0 35px rgba(99, 102, 241, 0.25)',
+        boxShadow: 'var(--shadow-card)',
         overflow: 'hidden',
         padding: '32px'
       }}>
@@ -62,20 +62,20 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
             width: '54px',
             height: '54px',
             borderRadius: '16px',
-            background: 'linear-gradient(135deg, #6366f1, #06b6d4)',
+            background: 'var(--primary-gradient)',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: '#fff',
-            boxShadow: '0 0 20px rgba(99, 102, 241, 0.5)',
+            boxShadow: 'var(--shadow-glow)',
             marginBottom: '16px'
           }}>
             <Sparkles size={26} />
           </div>
-          <h2 style={{ margin: '0 0 8px', fontSize: '1.4rem', fontWeight: '800', color: '#fff' }}>
+          <h2 style={{ margin: '0 0 8px', fontSize: '1.4rem', fontWeight: '800', color: 'var(--text-main)' }}>
             Complete Your Profile
           </h2>
-          <p style={{ margin: 0, color: 'var(--text-dim)', fontSize: '0.88rem', lineHeight: 1.5 }}>
+          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.88rem', lineHeight: 1.5 }}>
             Welcome to AutoGrade! Please confirm your student details to set up your account.
           </p>
         </div>

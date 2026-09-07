@@ -863,7 +863,7 @@ async def list_class_assignments(
     current_user: Student = Depends(get_current_user),
 ):
     """Lists all assignments belonging to a specific class for authorized members."""
-    await get_accessible_class(id, current_user, session)
+    target_class = await get_accessible_class(id, current_user, session)
 
     stmt = (
         select(Assignment)
@@ -871,8 +871,8 @@ async def list_class_assignments(
         .order_by(Assignment.deadline.asc())
     )
     res = await session.execute(stmt)
-    is_admin = current_user.role == UserRole.admin
-    return [format_assignment_response(a, is_admin=is_admin) for a in res.scalars().all()]
+    is_instructor_or_admin = (target_class.teacher_id == current_user.id) or (current_user.role == UserRole.admin)
+    return [format_assignment_response(a, is_admin=is_instructor_or_admin) for a in res.scalars().all()]
 
 
 @app.post(
@@ -892,7 +892,7 @@ async def create_class_assignment(
     deadline: str = Form(...),
     attachment: Optional[UploadFile] = File(None),
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """
     Teacher creates an assignment inside a class.
@@ -902,7 +902,7 @@ async def create_class_assignment(
     target_class = await session.get(Class, id)
     if not target_class:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
-    if target_class.teacher_id != admin_user.id:
+    if target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the teacher who created this class can publish assignments for it.",
@@ -956,8 +956,8 @@ async def create_class_assignment(
         await session.refresh(assignment)
 
     logger.info(
-        "Admin %s created assignment id=%d in class id=%d (attachment=%s, cloudinary=%s)",
-        admin_user.name, assignment.id, id, bool(assignment.attachment_path), bool(assignment.cloudinary_url)
+        "Teacher %s created assignment id=%d in class id=%d (attachment=%s, cloudinary=%s)",
+        current_user.name, assignment.id, id, bool(assignment.attachment_path), bool(assignment.cloudinary_url)
     )
     return format_assignment_response(assignment, is_admin=True)
 
@@ -968,7 +968,7 @@ async def update_assignment(
     id: int,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """
     Teacher updates an assignment:
@@ -987,7 +987,7 @@ async def update_assignment(
 
     if assignment.class_id:
         target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != admin_user.id:
+        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only the teacher who created this class can edit its assignments.",
@@ -1085,8 +1085,8 @@ async def update_assignment(
     await session.commit()
     await session.refresh(assignment)
     logger.info(
-        "Admin %s updated assignment id=%d (%s): desc_len=%d, llm_prompt_len=%d, rubric_len=%d, plag_len=%d",
-        admin_user.name, assignment.id, assignment.title,
+        "User %s updated assignment id=%d (%s): desc_len=%d, llm_prompt_len=%d, rubric_len=%d, plag_len=%d",
+        current_user.name, assignment.id, assignment.title,
         len(assignment.description or ""), len(assignment.llm_prompt or ""),
         len(assignment.rubric_text or ""), len(assignment.plagiarism_policy or "")
     )
@@ -1170,7 +1170,14 @@ async def get_assignment(
     assignment = await session.get(Assignment, id)
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
-    return format_assignment_response(assignment)
+
+    is_admin = current_user.role == UserRole.admin
+    if assignment.class_id:
+        target_class = await session.get(Class, assignment.class_id)
+        if target_class and target_class.teacher_id == current_user.id:
+            is_admin = True
+
+    return format_assignment_response(assignment, is_admin=is_admin)
 
 
 
@@ -1184,12 +1191,25 @@ async def get_assignment(
 async def create_assignment(
     payload: AssignmentCreateRequest,
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """
     Creates a new assignment with rubric criteria, task description, max marks, and deadline.
-    Restricted to Admin/TA users.
+    Accessible by course instructors and admins.
     """
+    if payload.class_id:
+        target_class = await session.get(Class, payload.class_id)
+        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the teacher who created this class can add assignments to it.",
+            )
+    elif current_user.role != UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Only faculty instructors or admins can create assignments.",
+        )
+
     assignment = Assignment(
         class_id=payload.class_id,
         title=payload.title,
@@ -1202,10 +1222,10 @@ async def create_assignment(
     await session.commit()
     await session.refresh(assignment)
     logger.info(
-        "Admin %s (id=%d) created assignment id=%d: '%s'",
-        admin_user.name, admin_user.id, assignment.id, assignment.title,
+        "User %s (id=%d) created assignment id=%d: '%s'",
+        current_user.name, current_user.id, assignment.id, assignment.title,
     )
-    return format_assignment_response(assignment)
+    return format_assignment_response(assignment, is_admin=True)
 
 
 # ── Student Endpoints ─────────────────────────────────────────────────────────
@@ -1383,13 +1403,13 @@ async def get_my_grades(
     return views
 
 
-# ── Admin Endpoints ───────────────────────────────────────────────────────────
+# ── Evaluation & Grading Endpoints (Accessible by Course Teacher & Admin) ───────
 
 @app.post("/admin/assignments/{id}/publish-results", response_model=AssignmentResponse, tags=["Admin"])
 async def publish_assignment_results(
     id: int,
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """
     Teacher publishes evaluated grades and AI feedback to students for an assignment.
@@ -1400,13 +1420,15 @@ async def publish_assignment_results(
 
     if assignment.class_id:
         target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != admin_user.id:
+        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+    elif current_user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
     assignment.results_published = True
     await session.commit()
     await session.refresh(assignment)
-    logger.info("Admin %s published results for assignment id=%d ('%s')", admin_user.name, assignment.id, assignment.title)
+    logger.info("Teacher %s published results for assignment id=%d ('%s')", current_user.name, assignment.id, assignment.title)
     return format_assignment_response(assignment, is_admin=True)
 
 
@@ -1414,7 +1436,7 @@ async def publish_assignment_results(
 async def unpublish_assignment_results(
     id: int,
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """
     Teacher unpublishes grades and AI feedback to students for an assignment.
@@ -1425,13 +1447,15 @@ async def unpublish_assignment_results(
 
     if assignment.class_id:
         target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != admin_user.id:
+        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+    elif current_user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
     assignment.results_published = False
     await session.commit()
     await session.refresh(assignment)
-    logger.info("Admin %s unpublished results for assignment id=%d ('%s')", admin_user.name, assignment.id, assignment.title)
+    logger.info("Teacher %s unpublished results for assignment id=%d ('%s')", current_user.name, assignment.id, assignment.title)
     return format_assignment_response(assignment, is_admin=True)
 
 @app.get(
@@ -1442,10 +1466,10 @@ async def unpublish_assignment_results(
 async def get_assignment_grades_for_admin(
     id: int,
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """
-    Admin views full table of submissions and grades for a specific assignment:
+    Teacher/Admin views full table of submissions and grades for a specific assignment:
     student details, marks, reasoning, flagged status, and manual edit audit trail.
     Includes all enrolled students in the class (assigning 0 for unsubmitted).
     """
@@ -1453,6 +1477,13 @@ async def get_assignment_grades_for_admin(
     assignment = await session.get(Assignment, id)
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    if assignment.class_id:
+        target_class = await session.get(Class, assignment.class_id)
+        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+    elif current_user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
     stmt = (
         select(Submission)
@@ -1560,7 +1591,7 @@ async def get_assignment_grades_for_admin(
 async def download_single_submission(
     id: int,
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """
     Teacher downloads an individual student's uploaded .ipynb notebook file.
@@ -1568,6 +1599,14 @@ async def download_single_submission(
     submission = await session.get(Submission, id)
     if not submission:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found.")
+
+    assignment = await session.get(Assignment, submission.assignment_id)
+    if assignment and assignment.class_id:
+        target_class = await session.get(Class, assignment.class_id)
+        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin and submission.student_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+    elif current_user.role != UserRole.admin and submission.student_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
     local_path = await ensure_local_file(submission.file_path, submission.cloudinary_url)
     if not local_path or not os.path.exists(local_path):
@@ -1599,7 +1638,7 @@ async def download_single_submission(
 async def download_all_submissions_zip(
     id: int,
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """
     Teacher downloads a ZIP archive containing all uploaded student .ipynb files for this assignment.
@@ -1607,6 +1646,13 @@ async def download_all_submissions_zip(
     assignment = await session.get(Assignment, id)
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    if assignment.class_id:
+        target_class = await session.get(Class, assignment.class_id)
+        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+    elif current_user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
     stmt = (
         select(Submission)
@@ -1662,10 +1708,10 @@ async def edit_grade_manually(
     id: int,
     payload: GradePatchRequest,
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """
-    Admin manually updates a grade (marks, reasoning, or similarity flag).
+    Teacher/Admin manually updates a grade (marks, reasoning, or similarity flag).
     Records manually_edited=true, edited_by_admin_id, and edited_at timestamp.
     """
     grade = await session.get(Grade, id)
@@ -1675,6 +1721,14 @@ async def edit_grade_manually(
     sub = await session.get(Submission, grade.submission_id)
     if not sub:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Associated submission not found")
+
+    assignment = await session.get(Assignment, sub.assignment_id)
+    if assignment and assignment.class_id:
+        target_class = await session.get(Class, assignment.class_id)
+        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+    elif current_user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
     student = await session.get(Student, sub.student_id)
 
@@ -1698,7 +1752,7 @@ async def edit_grade_manually(
         grade.flag_reason = payload.flag_reason
 
     grade.manually_edited = True
-    grade.edited_by_admin_id = admin_user.id
+    grade.edited_by_admin_id = current_user.id
     grade.edited_at = datetime.now(timezone.utc)
 
     await session.commit()
@@ -1734,10 +1788,10 @@ async def edit_grade_manually(
 async def recheck_single_submission(
     id: int,
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """
-    Rechecks a single student submission using the latest assignment instructions and grading rubric.
+    Teacher/Admin rechecks a single student submission using the latest assignment instructions and grading rubric.
     """
     sub = await session.get(Submission, id)
     if not sub:
@@ -1750,8 +1804,10 @@ async def recheck_single_submission(
     # Verify teacher access
     if assignment.class_id:
         target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != admin_user.id:
+        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+    elif current_user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
     # 1. Preprocess notebook
     from app.notebook_processing import process_notebook
@@ -1764,7 +1820,7 @@ async def recheck_single_submission(
 
     nb_result = process_notebook(path)
 
-    # 2. Grade with LLM strictly using latest Academic Marking Rubric & LLM Task Prompt (ignoring cheating criteria on individual recheck)
+    # 2. Grade with LLM strictly using latest Academic Marking Rubric & LLM Task Prompt
     res = await asyncio.to_thread(
         grade_submission,
         rubric=assignment.rubric_text,
@@ -1836,10 +1892,10 @@ async def trigger_grading_pipeline(
     recheck_all: bool = False,
     background_tasks: BackgroundTasks = BackgroundTasks(),
     session: AsyncSession = Depends(get_db),
-    admin_user: Student = Depends(require_admin),
+    current_user: Student = Depends(get_current_user),
 ):
     """
-    Triggers Phase 5's LangGraph batch grading pipeline for an assignment.
+    Teacher/Admin triggers Phase 5's LangGraph batch grading pipeline for an assignment.
     Processes all pending submissions through preprocessing, similarity checking,
     batch LLM evaluation, and database persistence.
     If recheck_all=True, resets all existing submissions to pending to re-evaluate them with latest prompt/rubric.
@@ -1847,6 +1903,14 @@ async def trigger_grading_pipeline(
     assignment = await session.get(Assignment, id)
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    # Verify teacher access
+    if assignment.class_id:
+        target_class = await session.get(Class, assignment.class_id)
+        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+    elif current_user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
     if recheck_all:
         await session.execute(
@@ -1902,7 +1966,8 @@ async def get_admin_stats(
 ):
     """Returns platform-wide statistics for the admin dashboard."""
     total_users = (await session.execute(select(func.count(Student.id)))).scalar() or 0
-    total_students = (await session.execute(select(func.count(Student.id)).where(Student.role == UserRole.student))).scalar() or 0
+    total_admins = (await session.execute(select(func.count(Student.id)).where(Student.role == UserRole.admin))).scalar() or 0
+    total_students = total_users - total_admins
     total_classes = (await session.execute(select(func.count(Class.id)))).scalar() or 0
     total_assignments = (await session.execute(select(func.count(Assignment.id)))).scalar() or 0
     total_submissions = (await session.execute(select(func.count(Submission.id)))).scalar() or 0
@@ -1914,6 +1979,7 @@ async def get_admin_stats(
     return AdminStatsResponse(
         total_users=total_users,
         total_students=total_students,
+        total_admins=total_admins,
         total_instructors=distinct_teachers,
         total_classes=total_classes,
         total_assignments=total_assignments,
@@ -1931,12 +1997,15 @@ async def get_admin_users(
 ):
     """
     Returns all registered users in the database with their metadata and statistics.
-    Supports filtering by search query and role.
+    Supports filtering by search query and role (admin or user).
     """
     stmt = select(Student)
 
     if role and role != "all":
-        stmt = stmt.where(Student.role == role)
+        if role in ("user", "student"):
+            stmt = stmt.where(Student.role != UserRole.admin)
+        elif role == "admin":
+            stmt = stmt.where(Student.role == UserRole.admin)
 
     if search and search.strip():
         q = f"%{search.strip().lower()}%"
@@ -1981,7 +2050,7 @@ async def get_admin_users(
                 last_name=u.last_name,
                 email=u.email,
                 student_id_str=u.student_id_str,
-                role=u.role.value,
+                role="admin" if u.role == UserRole.admin else "user",
                 created_at=u.created_at,
                 enrolled_classes_count=enrolled_count,
                 teaching_classes_count=teaching_count,
@@ -2012,10 +2081,24 @@ async def delete_user(
             detail="User not found",
         )
 
-    # Delete related enrollments, submissions, grades
+    # 1. If user is a teacher of classes, delete those classes (which cascades to assignments & submissions)
+    teaching_classes = (
+        await session.execute(select(Class).where(Class.teacher_id == user_id))
+    ).scalars().all()
+    for tc in teaching_classes:
+        await session.delete(tc)
+
+    # 2. Delete user's enrollments and submissions
     await session.execute(delete(ClassEnrollment).where(ClassEnrollment.student_id == user_id))
-    await session.execute(delete(Grade).where(Grade.student_id == user_id))
-    await session.execute(delete(Submission).where(Submission.student_id == user_id))
+    
+    # Submissions and their linked Grades (cascade="all, delete-orphan")
+    user_submissions = (
+        await session.execute(select(Submission).where(Submission.student_id == user_id))
+    ).scalars().all()
+    for sub in user_submissions:
+        await session.delete(sub)
+
+    # 3. Delete student record
     await session.delete(target_user)
     await session.commit()
 

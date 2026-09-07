@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   BookOpen, Lock, Mail, ArrowRight, Shield, AlertCircle,
   User, IdCard, UserPlus, LogIn, CheckCircle2, Eye, EyeOff,
-  KeyRound, RefreshCw, X, ArrowLeft, Sparkles
+  KeyRound, RefreshCw, X, ArrowLeft, Sparkles, Sun, Moon
 } from 'lucide-react';
 import {
   loginApi,
@@ -12,9 +12,10 @@ import {
   verifyOtpApi,
   resetPasswordApi
 } from '../api';
+import Toast from '../components/Toast';
 
 const GoogleIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24">
+  <svg width="20" height="20" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
     <path
       fill="#4285F4"
       d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
@@ -34,7 +35,8 @@ const GoogleIcon = () => (
   </svg>
 );
 
-export default function LoginPage({ onLoginSuccess }) {
+export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleTheme }) {
+  const isLight = theme === 'light';
   const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'signup-otp'
 
   // Login state
@@ -66,6 +68,7 @@ export default function LoginPage({ onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [toast, setToast] = useState(null);
 
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -77,7 +80,7 @@ export default function LoginPage({ onLoginSuccess }) {
       const data = await googleLoginApi(response.credential);
       onLoginSuccess(data);
     } catch (err) {
-      setError(err.message || 'Google authentication failed. Please try again.');
+      setToast({ message: err.message || 'Google authentication failed. Please try again.', type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -89,37 +92,32 @@ export default function LoginPage({ onLoginSuccess }) {
         window.google.accounts.id.initialize({
           client_id: clientId,
           callback: handleGoogleCredentialResponse,
-          auto_select: false,
-          cancel_on_tap_outside: true,
         });
 
-        const container = document.getElementById('google-signin-btn-container');
-        if (container) {
-          container.innerHTML = '';
-          window.google.accounts.id.renderButton(container, {
-            theme: 'filled_blue',
+        const gsiOverlay = document.getElementById('google-gsi-hidden-overlay');
+        if (gsiOverlay) {
+          window.google.accounts.id.renderButton(gsiOverlay, {
+            theme: isLight ? 'outline' : 'filled_black',
             size: 'large',
-            width: 388,
+            width: 400,
             shape: 'rectangular',
-            text: 'continue_with',
-            logo_alignment: 'left',
           });
         }
       } catch (err) {
         console.warn('Google GSI Init failed:', err);
       }
     }
-  }, [clientId, mode]);
+  }, [clientId, mode, isLight]);
 
   const handleManualGoogleClick = () => {
     if (window.google && clientId) {
       try {
         window.google.accounts.id.prompt();
       } catch {
-        setError('Could not display Google One-Tap prompt.');
+        setToast({ message: 'Could not display Google One-Tap prompt.', type: 'error' });
       }
     } else {
-      setError('Google Sign-In is not configured yet. Please check VITE_GOOGLE_CLIENT_ID.');
+      setToast({ message: 'Google Sign-In is not configured yet. Please check VITE_GOOGLE_CLIENT_ID.', type: 'warning' });
     }
   };
 
@@ -132,7 +130,7 @@ export default function LoginPage({ onLoginSuccess }) {
       const data = await loginApi(loginEmail, loginPassword);
       onLoginSuccess(data);
     } catch (err) {
-      setError(err.message || 'Login failed. Please verify credentials.');
+      setToast({ message: err.message || 'Incorrect email or password.', type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -270,13 +268,58 @@ export default function LoginPage({ onLoginSuccess }) {
       position: 'relative',
       overflow: 'hidden',
     }}>
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+      {/* Top right Theme Toggle */}
+      {onToggleTheme && (
+        <div style={{ position: 'absolute', top: '24px', right: '24px', zIndex: 10 }}>
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            title={isLight ? "Switch to Dark Mode" : "Switch to Light Mode"}
+            aria-label="Toggle Theme"
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: isLight ? '#FF6A00' : '#f8fafc',
+              cursor: 'pointer',
+              boxShadow: 'var(--shadow-card)',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'var(--primary)';
+              e.currentTarget.style.transform = 'rotate(15deg)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border-subtle)';
+              e.currentTarget.style.transform = 'rotate(0deg)';
+            }}
+          >
+            {isLight ? <Sun size={18} color="#FF6A00" /> : <Moon size={18} color="#a5b4fc" />}
+          </button>
+        </div>
+      )}
+
       {/* Background glowing orbs */}
       <div style={{
         position: 'absolute',
         width: '500px',
         height: '500px',
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(0, 0, 0, 0) 70%)',
+        background: isLight
+          ? 'radial-gradient(circle, rgba(255, 106, 0, 0.12) 0%, rgba(0, 0, 0, 0) 70%)'
+          : 'radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(0, 0, 0, 0) 70%)',
         top: '-100px',
         left: '-100px',
         pointerEvents: 'none',
@@ -286,7 +329,9 @@ export default function LoginPage({ onLoginSuccess }) {
         width: '500px',
         height: '500px',
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, rgba(0, 0, 0, 0) 70%)',
+        background: isLight
+          ? 'radial-gradient(circle, rgba(255, 45, 141, 0.1) 0%, rgba(0, 0, 0, 0) 70%)'
+          : 'radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, rgba(0, 0, 0, 0) 70%)',
         bottom: '-100px',
         right: '-100px',
         pointerEvents: 'none',
@@ -300,7 +345,7 @@ export default function LoginPage({ onLoginSuccess }) {
         position: 'relative',
         zIndex: 1,
         borderRadius: '24px',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px rgba(99, 102, 241, 0.15)',
+        boxShadow: 'var(--shadow-card)',
         transition: 'max-width 0.3s ease'
       }}>
         {/* Logo / Header */}
@@ -309,11 +354,11 @@ export default function LoginPage({ onLoginSuccess }) {
             width: '56px',
             height: '56px',
             borderRadius: '16px',
-            background: 'linear-gradient(135deg, #6366f1, #06b6d4)',
+            background: 'var(--primary-gradient)',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 0 24px rgba(99, 102, 241, 0.5)',
+            boxShadow: 'var(--shadow-glow)',
             marginBottom: '16px',
           }}>
             <BookOpen size={28} color="#ffffff" />
@@ -324,8 +369,9 @@ export default function LoginPage({ onLoginSuccess }) {
             fontWeight: '700',
             letterSpacing: '-0.02em',
             margin: '0 0 6px',
+            color: 'var(--text-main)'
           }}>
-            AutoGrade <span style={{ color: 'var(--accent-cyan)' }}>Classroom</span>
+            AutoGrade <span style={{ color: isLight ? '#FF2D8D' : 'var(--accent-cyan)' }}>Classroom</span>
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
             {mode === 'signup-otp'
@@ -340,11 +386,11 @@ export default function LoginPage({ onLoginSuccess }) {
         {mode !== 'signup-otp' && (
           <div style={{
             display: 'flex',
-            background: 'rgba(0, 0, 0, 0.25)',
+            background: isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(0, 0, 0, 0.28)',
             borderRadius: '12px',
             padding: '4px',
-            marginBottom: '24px',
-            border: '1px solid var(--border-subtle)',
+            marginBottom: '22px',
+            border: isLight ? '1px solid #e2e8f0' : '1px solid var(--border-subtle)',
           }}>
             <button
               type="button"
@@ -356,7 +402,7 @@ export default function LoginPage({ onLoginSuccess }) {
                 borderRadius: '9px',
                 border: 'none',
                 background: mode === 'login' ? 'var(--primary)' : 'transparent',
-                color: mode === 'login' ? '#ffffff' : 'var(--text-dim)',
+                color: mode === 'login' ? '#ffffff' : (isLight ? '#64748b' : 'var(--text-dim)'),
                 fontWeight: '600',
                 fontSize: '0.88rem',
                 cursor: 'pointer',
@@ -364,6 +410,7 @@ export default function LoginPage({ onLoginSuccess }) {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '6px',
+                boxShadow: mode === 'login' && isLight ? '0 4px 12px rgba(255, 106, 0, 0.25)' : 'none',
                 transition: 'all 0.2s ease',
               }}
             >
@@ -380,7 +427,7 @@ export default function LoginPage({ onLoginSuccess }) {
                 borderRadius: '9px',
                 border: 'none',
                 background: mode === 'signup' ? 'var(--primary)' : 'transparent',
-                color: mode === 'signup' ? '#ffffff' : 'var(--text-dim)',
+                color: mode === 'signup' ? '#ffffff' : (isLight ? '#64748b' : 'var(--text-dim)'),
                 fontWeight: '600',
                 fontSize: '0.88rem',
                 cursor: 'pointer',
@@ -388,6 +435,7 @@ export default function LoginPage({ onLoginSuccess }) {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '6px',
+                boxShadow: mode === 'signup' && isLight ? '0 4px 12px rgba(255, 106, 0, 0.25)' : 'none',
                 transition: 'all 0.2s ease',
               }}
             >
@@ -398,24 +446,6 @@ export default function LoginPage({ onLoginSuccess }) {
         )}
 
         {/* Status Banners */}
-        {error && (
-          <div style={{
-            padding: '12px 16px',
-            background: 'rgba(239, 68, 68, 0.15)',
-            border: '1px solid rgba(239, 68, 68, 0.35)',
-            borderRadius: '10px',
-            color: '#f87171',
-            fontSize: '0.88rem',
-            marginBottom: '20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px'
-          }}>
-            <AlertCircle size={18} style={{ flexShrink: 0 }} />
-            <span>{error}</span>
-          </div>
-        )}
-
         {successMsg && (
           <div style={{
             padding: '12px 16px',
@@ -436,48 +466,108 @@ export default function LoginPage({ onLoginSuccess }) {
 
         {/* Google SSO Container (Only in Login/Signup modes) */}
         {mode !== 'signup-otp' && (
-          <>
-            <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
-              <div id="google-signin-btn-container" style={{ width: '100%', minHeight: '44px', display: 'flex', justifyContent: 'center' }}>
-                <button
-                  type="button"
-                  onClick={handleManualGoogleClick}
-                  style={{
-                    width: '100%',
-                    padding: '11px 16px',
-                    background: 'rgba(255, 255, 255, 0.07)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: '10px',
-                    color: '#f3f4f6',
-                    fontSize: '0.92rem',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '12px',
-                    transition: 'background 0.2s, border-color 0.2s',
-                  }}
-                >
-                  <GoogleIcon />
-                  <span>Continue with Google</span>
-                </button>
-              </div>
+          <div style={{ marginBottom: '22px' }}>
+            <div
+              style={{
+                position: 'relative',
+                width: '100%',
+                borderRadius: '12px',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Visual Custom Google Button */}
+              <button
+                type="button"
+                id="google-custom-signin-btn"
+                className="google-auth-btn"
+                onClick={handleManualGoogleClick}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = isLight ? '#FF6A00' : 'rgba(255, 106, 0, 0.7)';
+                  e.currentTarget.style.background = isLight
+                    ? 'linear-gradient(135deg, #ffffff 0%, #fff7f2 100%)'
+                    : 'rgba(255, 255, 255, 0.09)';
+                  e.currentTarget.style.color = isLight ? '#FF6A00' : '#FFA066';
+                  e.currentTarget.style.boxShadow = isLight
+                    ? '0 8px 24px -4px rgba(255, 106, 0, 0.22), 0 2px 6px rgba(255, 106, 0, 0.1)'
+                    : '0 8px 24px -4px rgba(255, 106, 0, 0.3)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = isLight ? '#e2e8f0' : 'rgba(255, 255, 255, 0.12)';
+                  e.currentTarget.style.background = isLight
+                    ? 'linear-gradient(135deg, #ffffff 0%, #fafafa 100%)'
+                    : 'rgba(255, 255, 255, 0.05)';
+                  e.currentTarget.style.color = isLight ? '#1e293b' : '#f8fafc';
+                  e.currentTarget.style.boxShadow = isLight
+                    ? '0 2px 8px -2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.03)'
+                    : '0 4px 14px -4px rgba(0, 0, 0, 0.35)';
+                  e.currentTarget.style.transform = 'translateY(0px)';
+                }}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0px) scale(0.99)';
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+              >
+                <GoogleIcon />
+                <span>
+                  {mode === 'login' ? 'Continue with Google' : 'Sign up with Google'}
+                </span>
+              </button>
+
+              {/* Hidden GSI overlay to capture clicks seamlessly for Google Identity Services */}
+              <div
+                id="google-gsi-hidden-overlay"
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  opacity: 0.001,
+                  zIndex: 3,
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                }}
+              />
             </div>
 
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              marginBottom: '20px',
-            }}>
-              <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                or with email
+            {/* Dashed divider */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                marginTop: '20px',
+                marginBottom: '6px',
+              }}
+            >
+              <span
+                style={{
+                  flex: 1,
+                  borderTop: isLight ? '1px dashed #cbd5e1' : '1px dashed rgba(255, 255, 255, 0.12)',
+                }}
+              />
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: '700',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.35em',
+                  color: isLight ? '#94a3b8' : 'rgba(148, 163, 184, 0.75)',
+                }}
+              >
+                or
               </span>
-              <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
+              <span
+                style={{
+                  flex: 1,
+                  borderTop: isLight ? '1px dashed #cbd5e1' : '1px dashed rgba(255, 255, 255, 0.12)',
+                }}
+              />
             </div>
-          </>
+          </div>
         )}
 
         {/* ── MODE: SIGN IN ── */}
@@ -836,12 +926,12 @@ export default function LoginPage({ onLoginSuccess }) {
           animation: 'fadeIn 0.15s ease-out'
         }}>
           <div style={{
-            background: '#131b2e',
+            background: 'var(--modal-bg, #131b2e)',
             border: '1px solid var(--border-subtle)',
             borderRadius: '20px',
             width: '100%',
             maxWidth: '440px',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 30px rgba(99, 102, 241, 0.2)',
+            boxShadow: 'var(--shadow-card)',
             overflow: 'hidden',
             padding: '28px'
           }}>
@@ -852,7 +942,7 @@ export default function LoginPage({ onLoginSuccess }) {
                   width: '36px',
                   height: '36px',
                   borderRadius: '10px',
-                  background: 'rgba(99, 102, 241, 0.2)',
+                  background: 'rgba(255, 106, 0, 0.15)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -861,7 +951,7 @@ export default function LoginPage({ onLoginSuccess }) {
                   <KeyRound size={18} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700', color: '#fff' }}>Reset Password</h3>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)' }}>Reset Password</h3>
                   <span style={{ fontSize: '0.76rem', color: 'var(--text-dim)' }}>
                     {forgotStep === 1 ? 'Step 1: Request verification code' : 'Step 2: Set new password'}
                   </span>

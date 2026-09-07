@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import {
   User, Mail, IdCard, Lock, Camera, Check, AlertCircle, X,
-  Shield, Eye, EyeOff, Save, KeyRound, Sparkles
+  Shield, Eye, EyeOff, Save, KeyRound, Sparkles, Sun, Moon, Palette
 } from 'lucide-react';
 import { updateProfileApi, uploadAvatarApi, changePasswordApi } from '../api';
 
-export default function ProfileModal({ isOpen, onClose, currentUser, onProfileUpdated }) {
+export default function ProfileModal({
+  isOpen,
+  onClose,
+  currentUser,
+  theme = 'light',
+  onSetTheme,
+  onProfileUpdated
+}) {
   if (!isOpen) return null;
 
   const [activeTab, setActiveTab] = useState('details'); // 'details' | 'security'
@@ -120,42 +127,43 @@ export default function ProfileModal({ isOpen, onClose, currentUser, onProfileUp
       animation: 'fadeIn 0.15s ease-out'
     }}>
       <div style={{
-        background: '#111827',
+        background: 'var(--modal-bg, #111827)',
         border: '1px solid var(--border-subtle)',
         borderRadius: '20px',
         width: '100%',
         maxWidth: '560px',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 30px rgba(99, 102, 241, 0.15)',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px rgba(255, 106, 0, 0.15)',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        maxHeight: '90vh'
+        maxHeight: '90vh',
+        color: 'var(--text-main)'
       }}>
         {/* Modal Header */}
         <div style={{
           padding: '20px 24px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'rgba(255, 255, 255, 0.02)'
+          background: 'var(--bg-card)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
               width: '38px',
               height: '38px',
               borderRadius: '12px',
-              background: 'linear-gradient(135deg, #6366f1, #06b6d4)',
+              background: 'var(--primary-gradient)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: '#fff',
-              boxShadow: '0 0 16px rgba(99, 102, 241, 0.4)'
+              boxShadow: 'var(--shadow-glow)'
             }}>
               <User size={20} />
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: '#fff' }}>User Profile</h3>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-main)' }}>User Profile</h3>
               <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-dim)' }}>Manage your personal details and security</p>
             </div>
           </div>
@@ -428,12 +436,88 @@ export default function ProfileModal({ isOpen, onClose, currentUser, onProfileUp
                   </div>
                 </div>
 
+                {/* Theme Selector Section */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    UI Theme Preference
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    {/* Dark AI Glassmorphic Option */}
+                    <div
+                      onClick={() => onSetTheme && onSetTheme('dark')}
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: '12px',
+                        border: theme === 'dark' ? '2px solid #6366f1' : '1px solid var(--border-subtle)',
+                        background: theme === 'dark' ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg-surface)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{
+                        width: '30px',
+                        height: '30px',
+                        borderRadius: '8px',
+                        background: '#090d16',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#6366f1'
+                      }}>
+                        <Moon size={16} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.84rem', fontWeight: '600', color: 'var(--text-main)' }}>Dark Mode</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Default Dark Theme</div>
+                      </div>
+                    </div>
+
+                    {/* Light Mode Option */}
+                    <div
+                      onClick={() => onSetTheme && onSetTheme('light')}
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: '12px',
+                        border: theme === 'light' ? '2px solid #FF6A00' : '1px solid var(--border-subtle)',
+                        background: theme === 'light' ? 'rgba(255, 106, 0, 0.12)' : 'var(--bg-surface)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{
+                        width: '30px',
+                        height: '30px',
+                        borderRadius: '8px',
+                        background: 'linear-gradient(135deg, #FF6A00, #FF2D8D)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#ffffff',
+                        boxShadow: '0 2px 8px rgba(255, 106, 0, 0.3)'
+                      }}>
+                        <Sun size={16} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.84rem', fontWeight: '600', color: 'var(--text-main)' }}>Light Mode</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>Warm Light Theme</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   paddingTop: '16px',
-                  borderTop: '1px solid rgba(255, 255, 255, 0.08)'
+                  borderTop: '1px solid var(--border-subtle)'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span className={`badge ${currentUser?.role === 'admin' ? 'badge-graded' : 'badge-pending'}`} style={{ fontSize: '0.75rem' }}>

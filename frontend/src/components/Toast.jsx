@@ -1,51 +1,138 @@
-import React, { useEffect } from 'react';
-import { CheckCircle2, AlertTriangle, XCircle, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { CheckCircle2, AlertTriangle, XCircle, Info, X } from 'lucide-react';
 
-export default function Toast({ message, type = 'success', onClose }) {
+export default function Toast({ message, type = 'success', duration = 3500, onClose }) {
+  const [visible, setVisible] = useState(false);
+
   useEffect(() => {
     if (!message) return;
+    setVisible(true);
     const timer = setTimeout(() => {
-      onClose();
-    }, 4500);
+      setVisible(false);
+      setTimeout(onClose, 200);
+    }, duration);
     return () => clearTimeout(timer);
-  }, [message, onClose]);
+  }, [message, duration, onClose]);
 
   if (!message) return null;
 
   const isSuccess = type === 'success';
   const isError = type === 'error';
   const isWarning = type === 'warning';
+  const isInfo = type === 'info';
 
-  const borderColor = isSuccess ? '#10b981' : isError ? '#ef4444' : '#f59e0b';
-  const Icon = isSuccess ? CheckCircle2 : isError ? XCircle : AlertTriangle;
+  const accentColor = isSuccess
+    ? '#10b981'
+    : isError
+    ? '#ef4444'
+    : isWarning
+    ? '#f59e0b'
+    : 'var(--primary, #FF6A00)';
+
+  const Icon = isSuccess
+    ? CheckCircle2
+    : isError
+    ? XCircle
+    : isWarning
+    ? AlertTriangle
+    : Info;
 
   return (
     <div
       style={{
         position: 'fixed',
-        bottom: '24px',
+        top: '24px',
         right: '24px',
-        zIndex: 100,
-        background: '#111827',
-        border: `1px solid ${borderColor}`,
-        boxShadow: `0 10px 25px -5px ${borderColor}33`,
-        borderRadius: '12px',
-        padding: '12px 18px',
+        zIndex: 99999,
+        background: 'var(--modal-bg, #111827)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        border: '1px solid var(--border-subtle)',
+        borderLeft: `4px solid ${accentColor}`,
+        boxShadow: `0 12px 35px -6px rgba(0, 0, 0, 0.18), 0 0 20px ${accentColor}20`,
+        borderRadius: '14px',
+        padding: '14px 18px 16px 16px',
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
         maxWidth: '420px',
-        animation: 'slideUp 0.25s ease-out',
+        minWidth: '300px',
+        overflow: 'hidden',
+        color: 'var(--text-main)',
+        transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+        transform: visible ? 'translateY(0) scale(1)' : 'translateY(-14px) scale(0.95)',
+        opacity: visible ? 1 : 0,
       }}
     >
-      <Icon size={20} color={borderColor} style={{ flexShrink: 0 }} />
-      <span style={{ fontSize: '0.88rem', color: '#f8fafc', flexGrow: 1 }}>{message}</span>
-      <button
-        onClick={onClose}
-        style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+      <div
+        style={{
+          width: '32px',
+          height: '32px',
+          borderRadius: '50%',
+          background: `${accentColor}18`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
       >
-        <X size={16} />
+        <Icon size={18} color={accentColor} />
+      </div>
+
+      <div style={{ flexGrow: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.88rem', fontWeight: '600', color: 'var(--text-main)' }}>
+          {isSuccess ? 'Success' : isError ? 'Error' : isWarning ? 'Notice' : 'Information'}
+        </div>
+        <div
+          style={{
+            fontSize: '0.80rem',
+            color: 'var(--text-muted)',
+            marginTop: '2px',
+            lineHeight: '1.35',
+            wordBreak: 'break-word',
+          }}
+        >
+          {message}
+        </div>
+      </div>
+
+      <button
+        onClick={() => {
+          setVisible(false);
+          setTimeout(onClose, 200);
+        }}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          color: 'var(--text-dim)',
+          cursor: 'pointer',
+          padding: '4px',
+          borderRadius: '6px',
+          display: 'flex',
+          alignItems: 'center',
+          flexShrink: 0,
+          transition: 'color 0.15s',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-main)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-dim)'; }}
+        title="Dismiss"
+      >
+        <X size={15} />
       </button>
+
+      {/* Toast Animated Progress Bar */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: '3px',
+          background: accentColor,
+          transformOrigin: 'left',
+          animation: `toast-progress ${duration}ms linear forwards`,
+        }}
+      />
     </div>
   );
 }

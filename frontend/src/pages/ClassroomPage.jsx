@@ -7,6 +7,7 @@ import { getClassesApi } from '../api';
 import CreateClassModal from '../components/CreateClassModal';
 import JoinClassModal from '../components/JoinClassModal';
 import Toast from '../components/Toast';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function ClassroomPage({ user, onSelectClass }) {
   const [classes, setClasses] = useState([]);
@@ -210,10 +211,7 @@ export default function ClassroomPage({ user, onSelectClass }) {
 
       {/* Classes Grid */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
-          <div className="animate-spin" style={{ width: '32px', height: '32px', border: '3px solid var(--border-subtle)', borderTopColor: 'var(--accent-cyan)', borderRadius: '50%', margin: '0 auto 16px' }} />
-          Loading classes...
-        </div>
+        <LoadingSpinner text="Loading classes..." size={56} minHeight="360px" />
       ) : displayClasses.length === 0 ? (
         <div className="glass-panel" style={{ textAlign: 'center', padding: '64px 24px', borderRadius: '16px' }}>
           {activeTab === 'teaching' ? (
@@ -283,11 +281,6 @@ export default function ClassroomPage({ user, onSelectClass }) {
                     <h3 style={{ fontSize: '1.25rem', fontWeight: '800', lineHeight: '1.3', margin: 0 }}>
                       {cls.name}
                     </h3>
-                    {cls.section && (
-                      <div style={{ fontSize: '0.82rem', opacity: 0.85, marginTop: '3px' }}>
-                        Section: {cls.section}
-                      </div>
-                    )}
                   </div>
 
                   {/* Class Code Pill with 1-click copy */}

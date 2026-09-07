@@ -3,7 +3,8 @@ import {
   ArrowLeft, BookOpen, Users, Cpu, Plus, Copy, Check, FileDown,
   Upload, Clock, CheckCircle2, AlertTriangle, Play, Sparkles,
   ChevronDown, ChevronUp, Edit3, Eye, FileText, Calendar, RefreshCw,
-  RotateCw, RotateCcw, Save, X, HelpCircle, Send, EyeOff
+  RotateCw, RotateCcw, Save, X, HelpCircle, Send, EyeOff,
+  School, GraduationCap, Shield
 } from 'lucide-react';
 import {
   getClassDetailsApi,
@@ -27,6 +28,7 @@ import EditAssignmentModal from '../components/EditAssignmentModal';
 import EditGradeModal from '../components/EditGradeModal';
 import SimilarityFlagModal from '../components/SimilarityFlagModal';
 import Toast from '../components/Toast';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function ClassDetailPage({ classId, user, onBack }) {
   const [classData, setClassData] = useState(null);
@@ -436,10 +438,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px 0', color: 'var(--text-muted)' }}>
-        <div className="animate-spin" style={{ width: '36px', height: '36px', border: '3px solid var(--border-subtle)', borderTopColor: 'var(--accent-cyan)', borderRadius: '50%', margin: '0 auto 16px' }} />
-        Loading class details...
-      </div>
+      <LoadingSpinner text="Loading class details & assignments..." size={64} minHeight="500px" />
     );
   }
 
@@ -696,10 +695,20 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                       {isTeacher && ass.rubric_text && (
                         <button
                           onClick={() => setExpandedRubric((prev) => ({ ...prev, [ass.id]: !prev[ass.id] }))}
-                          className="btn-ghost"
-                          style={{ fontSize: '0.84rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          className="btn-secondary"
+                          style={{
+                            fontSize: '0.84rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '7px',
+                            ...(expandedRubric[ass.id] ? {
+                              borderColor: 'var(--border-active)',
+                              background: 'var(--bg-card-hover)',
+                              color: 'var(--primary)',
+                            } : {})
+                          }}
                         >
-                          <FileText size={16} />
+                          <FileText size={16} color={expandedRubric[ass.id] ? 'var(--primary)' : 'var(--accent-cyan)'} />
                           <span>{expandedRubric[ass.id] ? 'Hide Grading Rubric' : 'View Grading Rubric'}</span>
                           {expandedRubric[ass.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                         </button>
@@ -714,24 +723,50 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '6px',
-                            border: '1px solid rgba(245, 158, 11, 0.4)',
-                            color: '#fbbf24',
-                            background: 'rgba(245, 158, 11, 0.08)'
                           }}
                         >
-                          <Edit3 size={15} />
-                          <span>Edit & Extend Deadline</span>
+                          <Edit3 size={16} color="var(--primary)" />
+                          <span>Edit</span>
                         </button>
                       )}
                     </div>
 
                     {/* Collapsible Rubric (Teacher Only) */}
                     {isTeacher && expandedRubric[ass.id] && (
-                      <div style={{ padding: '16px', background: 'rgba(0,0,0,0.25)', borderRadius: '10px', marginBottom: '18px', border: '1px solid var(--border-subtle)' }}>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
-                          Grading Rubric Criteria (Private / Teacher View):
+                      <div style={{
+                        padding: '16px 20px',
+                        background: 'var(--bg-surface)',
+                        borderRadius: '12px',
+                        marginBottom: '18px',
+                        border: '1px solid var(--border-subtle)',
+                        boxShadow: 'var(--shadow-card)'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          fontSize: '0.78rem',
+                          color: 'var(--primary)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          fontWeight: '700',
+                          marginBottom: '10px'
+                        }}>
+                          <FileText size={15} />
+                          <span>Grading Rubric Criteria (Private / Teacher View)</span>
                         </div>
-                        <pre style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-bright)', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
+                        <pre style={{
+                          margin: 0,
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.86rem',
+                          color: 'var(--text-main)',
+                          whiteSpace: 'pre-wrap',
+                          lineHeight: '1.55',
+                          background: 'var(--input-bg)',
+                          padding: '14px 16px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-subtle)'
+                        }}>
                           {ass.rubric_text}
                         </pre>
                       </div>
@@ -747,14 +782,15 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                           {/* ── CARD 1: SUBMISSION / TURNED IN FILE ── */}
                           <div style={{
                             padding: '16px 20px',
-                            background: isUploaded ? 'rgba(6, 182, 212, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+                            background: isUploaded ? 'rgba(255, 106, 0, 0.05)' : 'var(--bg-surface)',
                             borderRadius: '12px',
-                            border: isUploaded ? '1px solid rgba(6, 182, 212, 0.25)' : '1px solid var(--border-subtle)'
+                            border: isUploaded ? '1px solid rgba(255, 106, 0, 0.25)' : '1px solid var(--border-subtle)',
+                            boxShadow: 'var(--shadow-card)'
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Upload size={16} color={isUploaded ? '#06b6d4' : 'var(--text-muted)'} />
-                                <span style={{ fontSize: '0.88rem', fontWeight: '700', color: isUploaded ? 'var(--accent-cyan)' : 'var(--text-bright)' }}>
+                                <Upload size={16} color="var(--primary)" />
+                                <span style={{ fontSize: '0.88rem', fontWeight: '700', color: 'var(--primary)' }}>
                                   1. Your Submission (Turned In File)
                                 </span>
                               </div>
@@ -771,11 +807,11 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
                             {isUploaded ? (
                               <div>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: 'rgba(0, 0, 0, 0.2)', padding: '12px 14px', borderRadius: '10px', marginBottom: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', padding: '12px 14px', borderRadius: '10px', marginBottom: '12px' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <FileText size={20} color="var(--accent-cyan)" />
+                                    <FileText size={20} color="var(--primary)" />
                                     <div>
-                                      <div style={{ fontSize: '0.88rem', fontWeight: '600', color: '#fff' }}>
+                                      <div style={{ fontSize: '0.88rem', fontWeight: '600', color: 'var(--text-main)' }}>
                                         {myGrade.file_name || 'demolab.ipynb'}
                                       </div>
                                       <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>
@@ -787,7 +823,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
                                 {/* Replace / Resubmit Controls (Active before deadline) */}
                                 {!isPastDeadline ? (
-                                  <div style={{ borderTop: '1px dashed rgba(6, 182, 212, 0.2)', paddingTop: '12px', marginTop: '8px' }}>
+                                  <div style={{ borderTop: '1px dashed rgba(255, 106, 0, 0.25)', paddingTop: '12px', marginTop: '8px' }}>
                                     <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
                                       Need to change your submission? You can replace it before the deadline:
                                     </div>
@@ -811,7 +847,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
                                       {isSelectedForThis && (
                                         <>
-                                          <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', fontWeight: '600' }}>
+                                          <span style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: '600' }}>
                                             Selected: {selectedFile.name}
                                           </span>
                                           <button
@@ -856,7 +892,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                                         />
                                       </label>
                                       {isSelectedForThis && (
-                                        <span style={{ fontSize: '0.82rem', color: 'var(--accent-cyan)' }}>
+                                        <span style={{ fontSize: '0.82rem', color: 'var(--primary)', fontWeight: '600' }}>
                                           Ready ({(selectedFile.size / 1024).toFixed(0)} KB)
                                         </span>
                                       )}
@@ -884,14 +920,15 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                           {/* ── CARD 2: EVALUATION / RESULT STATUS (KEPT SEPARATE) ── */}
                           <div style={{
                             padding: '16px 20px',
-                            background: isGraded ? 'rgba(34, 197, 94, 0.05)' : 'rgba(99, 102, 241, 0.05)',
+                            background: isGraded ? 'rgba(34, 197, 94, 0.05)' : 'var(--bg-surface)',
                             borderRadius: '12px',
-                            border: isGraded ? '1px solid rgba(34, 197, 94, 0.25)' : '1px solid rgba(99, 102, 241, 0.2)'
+                            border: isGraded ? '1px solid rgba(34, 197, 94, 0.25)' : '1px solid var(--border-subtle)',
+                            boxShadow: 'var(--shadow-card)'
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Sparkles size={16} color={isGraded ? '#4ade80' : '#818cf8'} />
-                                <span style={{ fontSize: '0.88rem', fontWeight: '700', color: isGraded ? '#4ade80' : '#818cf8' }}>
+                                <Sparkles size={16} color={isGraded ? '#4ade80' : 'var(--primary)'} />
+                                <span style={{ fontSize: '0.88rem', fontWeight: '700', color: isGraded ? '#4ade80' : 'var(--primary)' }}>
                                   2. Evaluation & Grade Result
                                 </span>
                               </div>
@@ -915,9 +952,9 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                                 Turn in your Jupyter notebook above to receive an AI evaluation and score breakdown.
                               </div>
                             ) : !isGraded ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '8px' }}>
-                                <Clock size={16} color="#818cf8" />
-                                <div style={{ fontSize: '0.84rem', color: 'var(--text-bright)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'rgba(255, 106, 0, 0.08)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                                <Clock size={16} color="var(--primary)" />
+                                <div style={{ fontSize: '0.84rem', color: 'var(--text-main)' }}>
                                   <strong>Result Pending:</strong> Your notebook has been submitted successfully and is queued for AI grading by your instructor.
                                 </div>
                               </div>
@@ -925,11 +962,11 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                               /* Graded Feedback */
                               <div>
                                 {myGrade.reasoning_text && (
-                                  <div style={{ padding: '14px', background: 'rgba(0, 0, 0, 0.25)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                                    <div style={{ fontSize: '0.76rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                                  <div style={{ padding: '14px 16px', background: 'var(--input-bg)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                                    <div style={{ fontSize: '0.76rem', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px', fontWeight: '700' }}>
                                       AI Feedback Breakdown:
                                     </div>
-                                    <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--text-bright)', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                    <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--text-main)', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
                                       {myGrade.reasoning_text}
                                     </p>
                                   </div>
@@ -1611,54 +1648,69 @@ export default function ClassDetailPage({ classId, user, onBack }) {
       {/* TAB 3: PEOPLE */}
       {activeTab === 'people' && (
         <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-          {/* Teachers */}
+          {/* Teachers / Instructors */}
           <div style={{ marginBottom: '32px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--accent-cyan)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px', marginBottom: '16px' }}>
-              Teachers & Instructors
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--primary)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <School size={18} />
+              <span>Teachers & Instructors</span>
             </h3>
-            <div className="glass-panel" style={{ padding: '16px 20px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', color: '#fff' }}>
-                {classData.teacher_name.charAt(0)}
+            <div className="glass-panel" style={{ padding: '16px 20px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'var(--primary-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', color: '#fff', fontSize: '1.05rem', boxShadow: 'var(--shadow-glow)' }}>
+                  {classData?.teacher_name ? classData.teacher_name.charAt(0).toUpperCase() : 'F'}
+                </div>
+                <div>
+                  <div style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-main)' }}>{classData?.teacher_name || 'Faculty Instructor'}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Course Creator & Lead Instructor</div>
+                </div>
               </div>
-              <div>
-                <div style={{ fontWeight: '700' }}>{classData.teacher_name}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Course Instructor</div>
-              </div>
+
+              <span className="badge badge-graded" style={{ padding: '4px 10px', fontSize: '0.78rem', fontWeight: '700' }}>
+                Instructor
+              </span>
             </div>
           </div>
 
           {/* Students */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--primary)' }}>
-                Classmates & Enrolled Students
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Users size={18} color="var(--primary)" />
+                <span>Classmates & Enrolled Students</span>
               </h3>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                {students.length} students
+                {students.length} {students.length === 1 ? 'student' : 'students'}
               </span>
             </div>
 
             {students.length === 0 ? (
-              <div className="glass-panel" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)', borderRadius: '12px' }}>
-                No students enrolled yet. Share class code <strong>{classData.code}</strong> with your students!
+              <div className="glass-panel" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
+                No students enrolled yet. Share class code <strong style={{ color: 'var(--primary)', letterSpacing: '1px' }}>{classData?.code || '...'}</strong> with your students!
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {students.map((st) => (
-                  <div key={st.student_id} className="glass-panel" style={{ padding: '14px 20px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div key={st.student_id} className="glass-panel" style={{ padding: '14px 20px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--border-subtle)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: '700' }}>
-                        {st.name.charAt(0)}
+                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(255, 106, 0, 0.12)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: '700' }}>
+                        {st.name ? st.name.charAt(0).toUpperCase() : 'S'}
                       </div>
                       <div>
-                        <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{st.name}</div>
+                        <div style={{ fontWeight: '600', fontSize: '0.92rem', color: 'var(--text-main)' }}>{st.name}</div>
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>{st.email}</div>
                       </div>
                     </div>
 
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                      Enrolled: {new Date(st.enrolled_at).toLocaleDateString()}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <span className="badge" style={{ background: 'rgba(255, 106, 0, 0.12)', color: 'var(--primary)', border: '1px solid var(--border-subtle)', padding: '3px 9px', fontSize: '0.75rem', fontWeight: '700' }}>
+                        Student
+                      </span>
+                      {st.enrolled_at && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                          Enrolled {new Date(st.enrolled_at).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

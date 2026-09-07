@@ -48,24 +48,37 @@ export async function apiRequest(endpoint, options = {}) {
     headers,
   });
 
+  // Safely consume response text exactly once
+  const responseText = await response.text();
+  let responseData = null;
+  if (responseText) {
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      responseData = responseText;
+    }
+  }
+
   if (response.status === 401) {
-    clearAuthSession();
-    window.dispatchEvent(new Event('auth-logout'));
-    throw new Error('Session expired. Please log in again.');
+    // Only clear session and dispatch auth-logout for protected API routes, not login/auth attempts
+    if (!endpoint.startsWith('/auth/')) {
+      clearAuthSession();
+      window.dispatchEvent(new Event('auth-logout'));
+      throw new Error('Session expired. Please log in again.');
+    }
   }
 
   if (!response.ok) {
     let errorDetail = 'Request failed';
-    try {
-      const errJson = await response.json();
-      errorDetail = errJson.detail || errorDetail;
-    } catch {
-      errorDetail = await response.text() || errorDetail;
+    if (responseData && typeof responseData === 'object' && responseData.detail) {
+      errorDetail = typeof responseData.detail === 'string' ? responseData.detail : JSON.stringify(responseData.detail);
+    } else if (typeof responseData === 'string' && responseData.trim()) {
+      errorDetail = responseData;
     }
     throw new Error(errorDetail);
   }
 
-  return response.json();
+  return responseData;
 }
 
 // ── Auth APIs ──
