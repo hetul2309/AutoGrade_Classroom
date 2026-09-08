@@ -27,9 +27,11 @@ _OTP_STORE: Dict[Tuple[str, str], Tuple[str, datetime]] = {}
 OTP_EXPIRATION_MINUTES = 10
 
 
+import secrets
+
 def generate_otp() -> str:
-    """Generates a secure 6-digit numerical OTP."""
-    return f"{random.randint(100000, 999999)}"
+    """Generates a cryptographically secure, random 6-digit numerical OTP."""
+    return f"{secrets.randbelow(900000) + 100000}"
 
 
 def store_otp(email: str, purpose: str, otp: str) -> None:
