@@ -13,6 +13,8 @@ import {
   resetPasswordApi
 } from '../api';
 import Toast from '../components/Toast';
+import lightLoadingSvg from '../assets/light_loading.svg';
+import darkLoadingSvg from '../assets/dark_loading.svg';
 
 const GoogleIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
@@ -70,6 +72,80 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
   const [successMsg, setSuccessMsg] = useState(null);
   const [toast, setToast] = useState(null);
 
+  const showToast = (message, type = 'error') => {
+    setToast({ message, type, id: Date.now() });
+  };
+
+  // Validation Helpers
+  const validateName = (val, fieldLabel) => {
+    if (!val || !val.trim()) {
+      return `${fieldLabel} is required.`;
+    }
+    if (/^\s/.test(val)) {
+      return `${fieldLabel} cannot start with a space.`;
+    }
+    if (/^\d/.test(val)) {
+      return `${fieldLabel} cannot start with a number.`;
+    }
+    if (/[0-9]/.test(val)) {
+      return `${fieldLabel} cannot contain numbers.`;
+    }
+    if (/[^a-zA-Z\s]/.test(val)) {
+      return `${fieldLabel} cannot contain special characters.`;
+    }
+    if (val.length < 1 || val.length > 50) {
+      return `${fieldLabel} must be between 1 and 50 characters.`;
+    }
+    return null;
+  };
+
+  const validateStudentId = (val) => {
+    if (!val || !val.trim()) {
+      return 'Student ID / Roll Number is required.';
+    }
+    const trimmed = val.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      return 'Student ID / Roll Number must contain only numbers.';
+    }
+    if (trimmed.length < 1 || trimmed.length > 10) {
+      return 'Student ID / Roll Number must be between 1 and 10 digits.';
+    }
+    return null;
+  };
+
+  const validatePassword = (pwd, fieldLabel = 'Password') => {
+    if (!pwd) {
+      return `${fieldLabel} is required.`;
+    }
+    if (pwd.length < 8 || pwd.length > 16) {
+      return `${fieldLabel} must be between 8 and 16 characters.`;
+    }
+    if (!/[A-Z]/.test(pwd)) {
+      return `${fieldLabel} must contain at least 1 uppercase letter (A-Z).`;
+    }
+    if (!/[a-z]/.test(pwd)) {
+      return `${fieldLabel} must contain at least 1 lowercase letter (a-z).`;
+    }
+    if (!/[0-9]/.test(pwd)) {
+      return `${fieldLabel} must contain at least 1 number (0-9).`;
+    }
+    if (!/[^A-Za-z0-9]/.test(pwd)) {
+      return `${fieldLabel} must contain at least 1 special character.`;
+    }
+    return null;
+  };
+
+  const validateEmail = (val) => {
+    if (!val || !val.trim()) {
+      return 'Email address is required.';
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(val.trim())) {
+      return 'Please enter a valid email address.';
+    }
+    return null;
+  };
+
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   const handleGoogleCredentialResponse = async (response) => {
@@ -80,8 +156,7 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
       const data = await googleLoginApi(response.credential);
       onLoginSuccess(data);
     } catch (err) {
-      setToast({ message: err.message || 'Google authentication failed. Please try again.', type: 'error' });
-    } finally {
+      showToast(err.message || 'Google authentication failed. Please try again.', 'error');
       setLoading(false);
     }
   };
@@ -114,24 +189,33 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
       try {
         window.google.accounts.id.prompt();
       } catch {
-        setToast({ message: 'Could not display Google One-Tap prompt.', type: 'error' });
+        showToast('Could not display Google One-Tap prompt.', 'error');
       }
     } else {
-      setToast({ message: 'Google Sign-In is not configured yet. Please check VITE_GOOGLE_CLIENT_ID.', type: 'warning' });
+      showToast('Google Sign-In is not configured yet. Please check VITE_GOOGLE_CLIENT_ID.', 'warning');
     }
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    const emailErr = validateEmail(loginEmail);
+    if (emailErr) {
+      showToast(emailErr, 'error');
+      return;
+    }
+    if (!loginPassword) {
+      showToast('Please enter your password.', 'error');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const data = await loginApi(loginEmail, loginPassword);
+      const data = await loginApi(loginEmail.trim().toLowerCase(), loginPassword);
       onLoginSuccess(data);
     } catch (err) {
-      setToast({ message: err.message || 'Incorrect email or password.', type: 'error' });
-    } finally {
+      showToast(err.message || 'Incorrect email or password.', 'error');
       setLoading(false);
     }
   };
@@ -142,22 +226,48 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
     setError(null);
     setSuccessMsg(null);
 
-    if (signupPassword !== confirmPassword) {
-      setError('Passwords do not match.');
+    const fnErr = validateName(firstName, 'First name');
+    if (fnErr) {
+      showToast(fnErr, 'error');
       return;
     }
-    if (signupPassword.length < 4) {
-      setError('Password must be at least 4 characters.');
+
+    const lnErr = validateName(lastName, 'Last name');
+    if (lnErr) {
+      showToast(lnErr, 'error');
+      return;
+    }
+
+    const emailErr = validateEmail(signupEmail);
+    if (emailErr) {
+      showToast(emailErr, 'error');
+      return;
+    }
+
+    const sidErr = validateStudentId(studentId);
+    if (sidErr) {
+      showToast(sidErr, 'error');
+      return;
+    }
+
+    const pwdErr = validatePassword(signupPassword, 'Password');
+    if (pwdErr) {
+      showToast(pwdErr, 'error');
+      return;
+    }
+
+    if (signupPassword !== confirmPassword) {
+      showToast('Passwords do not match.', 'error');
       return;
     }
 
     setLoading(true);
     try {
-      await sendOtpApi(signupEmail, 'signup');
+      await sendOtpApi(signupEmail.trim(), 'signup');
       setMode('signup-otp');
-      setSuccessMsg(`Verification code sent to ${signupEmail}. Please enter the 6-digit code.`);
+      setSuccessMsg(`Verification code sent to ${signupEmail.trim()}. Please enter the 6-digit code.`);
     } catch (err) {
-      setError(err.message || 'Failed to send verification code. Please check your email.');
+      showToast(err.message || 'Failed to send verification code. Please check your email.', 'error');
     } finally {
       setLoading(false);
     }
@@ -166,28 +276,27 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
   // Step 2: Verify OTP and finalize registration
   const handleVerifySignupOtp = async (e) => {
     e.preventDefault();
-    if (!signupOtp.trim()) {
-      setError('Please enter the 6-digit verification code.');
+    if (!signupOtp.trim() || signupOtp.trim().length !== 6) {
+      showToast('Please enter the 6-digit verification code.', 'error');
       return;
     }
 
     setLoading(true);
     setError(null);
     try {
-      await verifyOtpApi(signupEmail, signupOtp.trim(), 'signup');
+      await verifyOtpApi(signupEmail.trim(), signupOtp.trim(), 'signup');
       const registerData = {
-        first_name: firstName,
-        last_name: lastName,
-        email: signupEmail,
-        student_id: studentId,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: signupEmail.trim().toLowerCase(),
+        student_id: studentId.trim(),
         password: signupPassword,
         confirm_password: confirmPassword,
       };
       const data = await registerApi(registerData);
       onLoginSuccess(data);
     } catch (err) {
-      setError(err.message || 'Verification failed. Please enter the correct code.');
-    } finally {
+      showToast(err.message || 'Verification failed. Please enter the correct code.', 'error');
       setLoading(false);
     }
   };
@@ -197,10 +306,11 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
     setLoading(true);
     setError(null);
     try {
-      await sendOtpApi(signupEmail, 'signup');
-      setSuccessMsg(`New code dispatched to ${signupEmail}.`);
+      await sendOtpApi(signupEmail.trim(), 'signup');
+      setSuccessMsg(`New code dispatched to ${signupEmail.trim()}.`);
+      showToast(`New code dispatched to ${signupEmail.trim()}.`, 'success');
     } catch (err) {
-      setError(err.message || 'Failed to resend verification code.');
+      showToast(err.message || 'Failed to resend verification code.', 'error');
     } finally {
       setLoading(false);
     }
@@ -209,8 +319,9 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
   // Forgot Password: Step 1 Send OTP
   const handleForgotSendOtp = async (e) => {
     e.preventDefault();
-    if (!forgotEmail.trim()) {
-      setError('Please enter your registered email address.');
+    const emailErr = validateEmail(forgotEmail);
+    if (emailErr) {
+      showToast(emailErr, 'error');
       return;
     }
 
@@ -218,11 +329,11 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
     setError(null);
     setSuccessMsg(null);
     try {
-      await sendOtpApi(forgotEmail, 'forgot_password');
+      await sendOtpApi(forgotEmail.trim(), 'forgot_password');
       setForgotStep(2);
-      setSuccessMsg(`Reset code sent to ${forgotEmail}.`);
+      setSuccessMsg(`Reset code sent to ${forgotEmail.trim()}.`);
     } catch (err) {
-      setError(err.message || 'No registered account found with this email.');
+      showToast(err.message || 'No registered account found with this email.', 'error');
     } finally {
       setLoading(false);
     }
@@ -231,28 +342,34 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
   // Forgot Password: Step 2 Reset Password with OTP
   const handleForgotResetPassword = async (e) => {
     e.preventDefault();
-    if (forgotNewPassword !== forgotConfirmPassword) {
-      setError('New passwords do not match.');
+    if (!forgotOtp.trim() || forgotOtp.trim().length !== 6) {
+      showToast('Please enter the 6-digit verification code.', 'error');
       return;
     }
-    if (forgotNewPassword.length < 4) {
-      setError('Password must be at least 4 characters long.');
+    const pwdErr = validatePassword(forgotNewPassword, 'New password');
+    if (pwdErr) {
+      showToast(pwdErr, 'error');
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      showToast('New passwords do not match.', 'error');
       return;
     }
 
     setLoading(true);
     setError(null);
     try {
-      const res = await resetPasswordApi(forgotEmail, forgotOtp.trim(), forgotNewPassword, forgotConfirmPassword);
+      const res = await resetPasswordApi(forgotEmail.trim(), forgotOtp.trim(), forgotNewPassword, forgotConfirmPassword);
       setShowForgotPassword(false);
       setForgotStep(1);
       setForgotOtp('');
       setForgotNewPassword('');
       setForgotConfirmPassword('');
-      setLoginEmail(forgotEmail);
+      setLoginEmail(forgotEmail.trim());
       setSuccessMsg(res.message || 'Password reset successfully! Please sign in with your new password.');
+      showToast(res.message || 'Password reset successfully! Please sign in with your new password.', 'success');
     } catch (err) {
-      setError(err.message || 'Failed to reset password. Please check your verification code.');
+      showToast(err.message || 'Failed to reset password. Please check your verification code.', 'error');
     } finally {
       setLoading(false);
     }
@@ -268,8 +385,82 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
       position: 'relative',
       overflow: 'hidden',
     }}>
+      {/* Centered Loading Overlay with Foreground SVG and Subtle Backdrop Blur */}
+      {loading && (
+        <div
+          id="auth-loading-overlay"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: 9999999,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            backgroundColor: isLight ? 'rgba(255, 255, 255, 0.48)' : 'rgba(9, 13, 22, 0.58)',
+            pointerEvents: 'all',
+            cursor: 'wait',
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '28px 36px',
+              borderRadius: '22px',
+              background: isLight ? 'rgba(255, 255, 255, 0.88)' : 'rgba(15, 23, 42, 0.88)',
+              border: isLight ? '1px solid rgba(255, 106, 0, 0.2)' : '1px solid rgba(255, 255, 255, 0.12)',
+              boxShadow: isLight
+                ? '0 16px 40px -10px rgba(255, 106, 0, 0.22), 0 0 24px rgba(255, 106, 0, 0.12)'
+                : '0 16px 40px -10px rgba(0, 0, 0, 0.7), 0 0 24px rgba(99, 102, 241, 0.15)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+            }}
+          >
+            <img
+              src={isLight ? lightLoadingSvg : darkLoadingSvg}
+              alt="Loading..."
+              style={{
+                width: '72px',
+                height: '72px',
+                display: 'block',
+                userSelect: 'none',
+              }}
+            />
+            <span
+              style={{
+                fontSize: '0.94rem',
+                fontWeight: '600',
+                color: isLight ? '#1e293b' : '#f8fafc',
+                marginTop: '14px',
+                letterSpacing: '0.01em',
+              }}
+            >
+              {mode === 'login'
+                ? 'Signing in, please wait...'
+                : mode === 'signup'
+                ? 'Sending verification code...'
+                : mode === 'signup-otp'
+                ? 'Verifying account...'
+                : 'Processing, please wait...'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <Toast
+          key={toast.id || toast.message}
           message={toast.message}
           type={toast.type}
           onClose={() => setToast(null)}
@@ -643,11 +834,27 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
               id="login-submit-btn"
               type="submit"
               className="btn-primary"
-              style={{ width: '100%', padding: '12px', marginTop: '6px', fontSize: '0.96rem' }}
+              style={{
+                width: '100%',
+                padding: '12px',
+                marginTop: '6px',
+                fontSize: '0.96rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px'
+              }}
               disabled={loading}
             >
               {loading ? (
-                <span>Signing In...</span>
+                <>
+                  <img
+                    src={isLight ? lightLoadingSvg : darkLoadingSvg}
+                    alt=""
+                    style={{ width: '20px', height: '20px', display: 'inline-block' }}
+                  />
+                  <span>Signing In...</span>
+                </>
               ) : (
                 <>
                   <span>Sign In</span>
@@ -671,6 +878,7 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                   <input
                     id="signup-first-name"
                     type="text"
+                    maxLength={50}
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
                     className="form-input"
@@ -690,6 +898,7 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                   <input
                     id="signup-last-name"
                     type="text"
+                    maxLength={50}
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
                     className="form-input"
@@ -729,11 +938,13 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                 <input
                   id="signup-student-id"
                   type="text"
+                  maxLength={10}
+                  inputMode="numeric"
                   value={studentId}
-                  onChange={(e) => setStudentId(e.target.value)}
+                  onChange={(e) => setStudentId(e.target.value.replace(/\D/g, ''))}
                   className="form-input"
                   style={{ paddingLeft: '36px', fontSize: '0.88rem' }}
-                  placeholder="e.g. 202401050"
+                  placeholder="e.g. 202401050 (numbers only)"
                   required
                 />
               </div>
@@ -748,11 +959,12 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                 <input
                   id="signup-password"
                   type={showSignupPassword ? 'text' : 'password'}
+                  maxLength={16}
                   value={signupPassword}
                   onChange={(e) => setSignupPassword(e.target.value)}
                   className="form-input"
                   style={{ paddingLeft: '36px', paddingRight: '36px', fontSize: '0.88rem' }}
-                  placeholder="Create a password (min 4 chars)"
+                  placeholder="8-16 chars (Aa1@)"
                   required
                 />
                 <button
@@ -777,11 +989,12 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                 <input
                   id="signup-confirm-password"
                   type={showConfirmPassword ? 'text' : 'password'}
+                  maxLength={16}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="form-input"
                   style={{ paddingLeft: '36px', paddingRight: '36px', fontSize: '0.88rem' }}
-                  placeholder="Re-enter your password"
+                  placeholder="Confirm password"
                   required
                 />
                 <button
@@ -801,11 +1014,27 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
               id="signup-submit-btn"
               type="submit"
               className="btn-primary"
-              style={{ width: '100%', padding: '12px', marginTop: '6px', fontSize: '0.94rem' }}
+              style={{
+                width: '100%',
+                padding: '12px',
+                marginTop: '6px',
+                fontSize: '0.94rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px'
+              }}
               disabled={loading}
             >
               {loading ? (
-                <span>Sending Verification Code...</span>
+                <>
+                  <img
+                    src={isLight ? lightLoadingSvg : darkLoadingSvg}
+                    alt=""
+                    style={{ width: '20px', height: '20px', display: 'inline-block' }}
+                  />
+                  <span>Sending Verification Code...</span>
+                </>
               ) : (
                 <>
                   <span>Verify Email & Sign Up</span>
@@ -876,11 +1105,26 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
             <button
               type="submit"
               className="btn-primary"
-              style={{ width: '100%', padding: '12px', fontSize: '0.96rem' }}
+              style={{
+                width: '100%',
+                padding: '12px',
+                fontSize: '0.96rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px'
+              }}
               disabled={loading || signupOtp.length < 6}
             >
               {loading ? (
-                <span>Verifying Account...</span>
+                <>
+                  <img
+                    src={isLight ? lightLoadingSvg : darkLoadingSvg}
+                    alt=""
+                    style={{ width: '20px', height: '20px', display: 'inline-block' }}
+                  />
+                  <span>Verifying Account...</span>
+                </>
               ) : (
                 <>
                   <CheckCircle2 size={18} />
@@ -1067,11 +1311,12 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                     <Lock size={16} color="var(--text-dim)" style={{ position: 'absolute', left: '12px', top: '11px' }} />
                     <input
                       type={showForgotNewPassword ? 'text' : 'password'}
+                      maxLength={16}
                       value={forgotNewPassword}
                       onChange={(e) => setForgotNewPassword(e.target.value)}
                       className="form-input"
                       style={{ paddingLeft: '38px', paddingRight: '38px', fontSize: '0.88rem' }}
-                      placeholder="Enter new password"
+                      placeholder="8-16 chars (Aa1@)"
                       required
                     />
                     <button
@@ -1095,6 +1340,7 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                     <Lock size={16} color="var(--text-dim)" style={{ position: 'absolute', left: '12px', top: '11px' }} />
                     <input
                       type={showForgotConfirmPassword ? 'text' : 'password'}
+                      maxLength={16}
                       value={forgotConfirmPassword}
                       onChange={(e) => setForgotConfirmPassword(e.target.value)}
                       className="form-input"

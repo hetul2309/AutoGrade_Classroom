@@ -296,6 +296,16 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.2);
 }
 
+/* Hide native Edge/Chromium password reveal and clear buttons to prevent duplicate eye icons */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* Table */
 .data-table-container {
   overflow-x: auto;
