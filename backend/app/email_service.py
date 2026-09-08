@@ -80,10 +80,10 @@ def _send_smtp_email_sync(to_email: str, subject: str, html_body: str, text_body
     ).strip()
     admin_pass = (
         settings.ADMIN_PASS
-        or settings.ADMIN_PASSWORD
         or os.getenv("ADMIN_PASS", "")
-        or os.getenv("ADMIN_PASSWORD", "")
         or os.getenv("SMTP_PASSWORD", "")
+        or settings.ADMIN_PASSWORD
+        or os.getenv("ADMIN_PASSWORD", "")
     ).strip()
 
     if not admin_email or not admin_pass:

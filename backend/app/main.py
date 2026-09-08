@@ -153,11 +153,12 @@ def is_admin_email(email: Optional[str]) -> bool:
 
 
 def get_admin_pass() -> str:
+    """Returns the password required to log into the Admin portal."""
     return (
-        settings.ADMIN_PASS
-        or settings.ADMIN_PASSWORD
-        or os.getenv("ADMIN_PASS", "")
+        settings.ADMIN_PASSWORD
         or os.getenv("ADMIN_PASSWORD", "")
+        or settings.ADMIN_PASS
+        or os.getenv("ADMIN_PASS", "")
     ).strip()
 
 
