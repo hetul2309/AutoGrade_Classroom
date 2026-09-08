@@ -20,9 +20,9 @@ from pathlib import Path
 # Make app importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Load .env from project root
+# Load .env from backend directory
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 from app.notebook_processing import process_notebook
 from app.grading import grade_submission, GradingError
