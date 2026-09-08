@@ -763,7 +763,7 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
 
         {/* ── MODE: SIGN IN ── */}
         {mode === 'login' && (
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <form noValidate onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '7px' }}>
                 Email Address
@@ -867,7 +867,7 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
 
         {/* ── MODE: SIGN UP (Step 1) ── */}
         {mode === 'signup' && (
-          <form onSubmit={handleInitiateSignUp} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <form noValidate onSubmit={handleInitiateSignUp} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
@@ -939,9 +939,8 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                   id="signup-student-id"
                   type="text"
                   maxLength={10}
-                  inputMode="numeric"
                   value={studentId}
-                  onChange={(e) => setStudentId(e.target.value.replace(/\D/g, ''))}
+                  onChange={(e) => setStudentId(e.target.value)}
                   className="form-input"
                   style={{ paddingLeft: '36px', fontSize: '0.88rem' }}
                   placeholder="e.g. 202401050 (numbers only)"
@@ -1047,7 +1046,7 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
 
         {/* ── MODE: SIGN UP OTP VERIFICATION (Step 2) ── */}
         {mode === 'signup-otp' && (
-          <form onSubmit={handleVerifySignupOtp} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <form noValidate onSubmit={handleVerifySignupOtp} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
             <div style={{ textAlign: 'center', padding: '8px 0' }}>
               <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
                 Enter the 6-digit code sent to:
@@ -1250,7 +1249,7 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
 
             {/* Step 1: Enter Email */}
             {forgotStep === 1 ? (
-              <form onSubmit={handleForgotSendOtp} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <form noValidate onSubmit={handleForgotSendOtp} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
                   Enter your registered email address. We will send a 6-digit code to verify your identity.
                 </p>
@@ -1285,7 +1284,7 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
               </form>
             ) : (
               /* Step 2: Enter OTP & New Password */
-              <form onSubmit={handleForgotResetPassword} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <form noValidate onSubmit={handleForgotResetPassword} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
                     6-Digit Verification Code

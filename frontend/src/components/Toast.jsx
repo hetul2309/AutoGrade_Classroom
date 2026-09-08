@@ -1,18 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { CheckCircle2, AlertTriangle, XCircle, Info, X } from 'lucide-react';
 
-export default function Toast({ message, type = 'success', duration = 3500, onClose }) {
-  const [visible, setVisible] = useState(false);
+export default function Toast({ message, type = 'success', duration = 4000, onClose }) {
+  const [visible, setVisible] = useState(true);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!message) return;
     setVisible(true);
     const timer = setTimeout(() => {
       setVisible(false);
-      setTimeout(onClose, 200);
+      setTimeout(() => {
+        if (onCloseRef.current) onCloseRef.current();
+      }, 200);
     }, duration);
     return () => clearTimeout(timer);
-  }, [message, duration, onClose]);
+  }, [message, duration]);
 
   if (!message) return null;
 
@@ -43,7 +47,7 @@ export default function Toast({ message, type = 'success', duration = 3500, onCl
         position: 'fixed',
         top: '24px',
         right: '24px',
-        zIndex: 99999,
+        zIndex: 100000000,
         background: 'var(--modal-bg, #111827)',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
