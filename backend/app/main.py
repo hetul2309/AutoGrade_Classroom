@@ -602,22 +602,25 @@ async def get_my_profile(current_user: Student = Depends(get_current_user)):
 
 # ── Assignment Helper ─────────────────────────────────────────────────────────
 
-def format_assignment_response(a: Assignment) -> AssignmentResponse:
+def format_assignment_response(a: Assignment, is_admin: bool = True) -> AssignmentResponse:
     has_att = bool((a.attachment_path and os.path.exists(a.attachment_path)) or a.cloudinary_url)
     return AssignmentResponse(
         id=a.id,
         class_id=a.class_id,
         title=a.title,
         description=a.description,
-        rubric_text=a.rubric_text,
-        plagiarism_policy=a.plagiarism_policy,
+        llm_prompt=a.llm_prompt if is_admin else None,
+        rubric_text=a.rubric_text if is_admin else "",
+        plagiarism_policy=a.plagiarism_policy if is_admin else None,
         max_marks=a.max_marks,
         deadline=a.deadline,
+        results_published=a.results_published,
         attachment_name=a.attachment_name,
         has_attachment=has_att,
         cloudinary_url=a.cloudinary_url,
         created_at=a.created_at,
     )
+
 
 
 # ── Classes Endpoints (Google Classroom Clone) ────────────────────────────────
@@ -850,24 +853,6 @@ async def get_class(
         created_at=target_class.created_at,
     )
 
-
-def format_assignment_response(a: Assignment, is_admin: bool = True) -> AssignmentResponse:
-    has_att = bool(a.attachment_path and os.path.exists(a.attachment_path))
-    return AssignmentResponse(
-        id=a.id,
-        class_id=a.class_id,
-        title=a.title,
-        description=a.description,
-        llm_prompt=a.llm_prompt if is_admin else None,
-        rubric_text=a.rubric_text if is_admin else "",
-        plagiarism_policy=a.plagiarism_policy if is_admin else None,
-        max_marks=a.max_marks,
-        deadline=a.deadline,
-        results_published=a.results_published,
-        attachment_name=a.attachment_name,
-        has_attachment=has_att,
-        created_at=a.created_at,
-    )
 
 
 @app.get("/classes/{id}/assignments", response_model=List[AssignmentResponse], tags=["Classes"])
