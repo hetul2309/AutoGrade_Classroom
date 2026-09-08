@@ -72,7 +72,7 @@ def verify_stored_otp(email: str, purpose: str, otp: str, consume: bool = True) 
 
 
 def _send_smtp_email_sync(to_email: str, subject: str, html_body: str, text_body: str) -> bool:
-    """Sends an email synchronously using smtplib."""
+    """Sends an email synchronously using smtplib with dual port retry (587 STARTTLS & 465 SSL)."""
     admin_email = (
         settings.ADMIN_EMAIL
         or os.getenv("ADMIN_EMAIL", "")
@@ -87,9 +87,9 @@ def _send_smtp_email_sync(to_email: str, subject: str, html_body: str, text_body
     ).strip()
 
     if not admin_email or not admin_pass:
+        print(f"[AutoGrade SMTP Warning] ADMIN_EMAIL or ADMIN_PASS is missing! (email='{admin_email}', pass_set={bool(admin_pass)})")
         logger.warning(
-            "SMTP credentials not fully configured (ADMIN_EMAIL/ADMIN_PASS). Email dispatch skipped. "
-            "OTP logged for development use."
+            "SMTP credentials not fully configured (ADMIN_EMAIL/ADMIN_PASS). Email dispatch skipped."
         )
         return False
 
@@ -101,27 +101,33 @@ def _send_smtp_email_sync(to_email: str, subject: str, html_body: str, text_body
     msg.attach(MIMEText(text_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    # Attempt connection (SSL on 465 or STARTTLS on 587)
     smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", "465"))
+    ports_to_try = [587, 465]
+    last_err = None
 
-    try:
-        if smtp_port == 465:
+    for port in ports_to_try:
+        try:
             context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=12) as server:
-                server.login(admin_email, admin_pass)
-                server.sendmail(admin_email, to_email, msg.as_string())
-        else:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=12) as server:
-                server.starttls(context=ssl.create_default_context())
-                server.login(admin_email, admin_pass)
-                server.sendmail(admin_email, to_email, msg.as_string())
+            if port == 465:
+                with smtplib.SMTP_SSL(smtp_host, port, context=context, timeout=10) as server:
+                    server.login(admin_email, admin_pass)
+                    server.sendmail(admin_email, to_email, msg.as_string())
+            else:
+                with smtplib.SMTP(smtp_host, port, timeout=10) as server:
+                    server.starttls(context=context)
+                    server.login(admin_email, admin_pass)
+                    server.sendmail(admin_email, to_email, msg.as_string())
 
-        logger.info("Successfully sent OTP email to %s via %s", to_email, smtp_host)
-        return True
-    except Exception as exc:
-        logger.error("Failed to send email to %s via SMTP: %s", to_email, str(exc))
-        return False
+            print(f"[AutoGrade SMTP SUCCESS] Verification email sent to {to_email} via {smtp_host}:{port}!")
+            logger.info("Successfully sent OTP email to %s via %s:%d", to_email, smtp_host, port)
+            return True
+        except Exception as exc:
+            last_err = exc
+            print(f"[AutoGrade SMTP Port {port} Attempt Failed] Reason: {exc}")
+
+    print(f"[AutoGrade SMTP FAILED] Could not send email to {to_email}. Error: {last_err}")
+    logger.error("Failed to send email to %s via SMTP: %s", to_email, str(last_err))
+    return False
 
 
 async def send_otp_email(to_email: str, otp: str, purpose: str = "signup") -> Tuple[bool, str]:
