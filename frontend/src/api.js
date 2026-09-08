@@ -3,7 +3,7 @@
  * Centralized API helper with JWT token management and error handling.
  */
 
-const API_BASE = '';
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 export function getAuthToken() {
   return localStorage.getItem('token');

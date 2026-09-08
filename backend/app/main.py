@@ -53,8 +53,9 @@ from app.auth import (
     require_student,
     verify_password,
 )
+from contextlib import asynccontextmanager
 from app.config import get_settings
-from app.database import get_db
+from app.database import engine, Base, get_db
 from app.models import (
     Assignment,
     Class,
@@ -106,10 +107,22 @@ from app.schemas import (
 logger = logging.getLogger("app.main")
 settings = get_settings()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Automatically initialize database tables on startup
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables verified/created successfully.")
+    except Exception as e:
+        logger.warning("Database schema initialization notice: %s", e)
+    yield
+
 app = FastAPI(
     title="Notebook Grading System API",
     description="Automated grading and plagiarism detection system for machine learning lab assignments",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # ── CORS Middleware ───────────────────────────────────────────────────────────
