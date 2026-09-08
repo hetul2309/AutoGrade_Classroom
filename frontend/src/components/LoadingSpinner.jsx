@@ -7,12 +7,27 @@ export default function LoadingSpinner({
   text = 'Loading...',
   fullScreen = false,
   minHeight = '320px',
+  delay = 300,
   style = {}
 }) {
+  const [show, setShow] = useState(delay === 0);
   const [currentTheme, setCurrentTheme] = useState(() => {
     return document.documentElement.getAttribute('data-theme') || 'light';
   });
 
+  // Delayed display so fast transitions (< delay ms) never flash the loader
+  useEffect(() => {
+    if (delay === 0) {
+      setShow(true);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setShow(true);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [delay]);
+
+  // Synchronize theme changes
   useEffect(() => {
     const checkTheme = () => {
       const active = document.documentElement.getAttribute('data-theme') || 'light';
@@ -28,6 +43,10 @@ export default function LoadingSpinner({
     return () => observer.disconnect();
   }, []);
 
+  if (!show) {
+    return null;
+  }
+
   const svgSrc = currentTheme === 'dark' ? darkLoading : lightLoading;
 
   const content = (
@@ -39,6 +58,8 @@ export default function LoadingSpinner({
         justifyContent: 'center',
         gap: '14px',
         padding: '24px',
+        background: 'transparent',
+        animation: 'fadeIn 0.25s ease-out',
         ...style
       }}
     >
@@ -80,7 +101,7 @@ export default function LoadingSpinner({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'var(--bg-main)',
+          background: 'transparent',
           zIndex: 99999
         }}
       >
@@ -96,7 +117,8 @@ export default function LoadingSpinner({
         minHeight: minHeight,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        background: 'transparent'
       }}
     >
       {content}

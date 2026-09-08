@@ -148,6 +148,7 @@ export default function App() {
           <ClassDetailPage
             classId={selectedClassId}
             user={currentUser}
+            theme={theme}
             onBack={() => setSelectedClassId(null)}
           />
         ) : currentView === 'admin-portal' && currentUser.role === 'admin' ? (

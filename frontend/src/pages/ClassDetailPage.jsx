@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ArrowLeft, BookOpen, Users, Cpu, Plus, Copy, Check, FileDown,
   Upload, Clock, CheckCircle2, AlertTriangle, Play, Sparkles,
@@ -30,7 +30,15 @@ import SimilarityFlagModal from '../components/SimilarityFlagModal';
 import Toast from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 
-export default function ClassDetailPage({ classId, user, onBack }) {
+import lavenderLoadingSvg from '../assets/lavender_loading.svg';
+import pinkLoadingSvg from '../assets/pink_loading.svg';
+import orangeRecheckSvg from '../assets/orange_recheck_loading.svg';
+import blueRecheckSvg from '../assets/blue_recheck_loading.svg';
+import lightRecheckAllSvg from '../assets/light_recheck_all_loading.svg';
+import darkRecheckAllSvg from '../assets/dark_recheck_all_loading.svg';
+
+export default function ClassDetailPage({ classId, user, onBack, theme = 'light' }) {
+  const isLight = theme === 'light';
   const [classData, setClassData] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [students, setStudents] = useState([]);
@@ -52,7 +60,7 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Prompt & Rubric in-place editing state
+  // Prompt, Rubric & Plagiarism policy states
   const [editingPromptRubric, setEditingPromptRubric] = useState(false);
   const [promptLlmDesc, setPromptLlmDesc] = useState('');
   const [promptRubric, setPromptRubric] = useState('');
@@ -65,6 +73,17 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   const [confirmRecheckAll, setConfirmRecheckAll] = useState(false);
   const [recheckingAll, setRecheckingAll] = useState(false);
   const [quotaError, setQuotaError] = useState(null);
+
+  // Refs for tracking active recheck state in async intervals
+  const recheckingSubIdRef = useRef(recheckingSubId);
+  const recheckingAllRef = useRef(recheckingAll);
+  const triggeringRef = useRef(triggering);
+
+  useEffect(() => {
+    recheckingSubIdRef.current = recheckingSubId;
+    recheckingAllRef.current = recheckingAll;
+    triggeringRef.current = triggering;
+  }, [recheckingSubId, recheckingAll, triggering]);
 
   // Publish Results state
   const [showPublishModal, setShowPublishModal] = useState(false);
@@ -102,23 +121,27 @@ export default function ClassDetailPage({ classId, user, onBack }) {
         setSelectedAssignmentId(aList[0].id);
       }
     } catch (err) {
-      setToast({ message: err.message || 'Failed to load class', type: 'error' });
+      setToast({ message: err.message || 'Failed to load class info', type: 'error' });
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadClassInfo();
+    if (classId) {
+      loadClassInfo();
+    }
   }, [classId]);
 
-  // 2. Load student grades if student
+  // 2. Load student grades for this class (student view)
   const loadStudentGrades = async () => {
     if (isTeacher) return;
     try {
       const grades = await getMyGradesApi();
       setStudentGrades(grades);
-    } catch {}
+    } catch (err) {
+      console.error('Failed to load student grades:', err);
+    }
   };
 
   useEffect(() => {
@@ -148,9 +171,11 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   useEffect(() => {
     if (activeTab === 'evaluation' && selectedAssignmentId && isTeacher) {
       loadEvalGrades(selectedAssignmentId);
-      // Auto-poll silently every 5s so teacher sees live student uploads in real-time
+      // Auto-poll silently every 5s so teacher sees live student uploads in real-time (strictly paused during active operations)
       const interval = setInterval(() => {
-        loadEvalGrades(selectedAssignmentId, true);
+        if (!recheckingAllRef.current && !recheckingSubIdRef.current && !triggeringRef.current) {
+          loadEvalGrades(selectedAssignmentId, true);
+        }
       }, 5000);
       return () => clearInterval(interval);
     }
@@ -160,7 +185,9 @@ export default function ClassDetailPage({ classId, user, onBack }) {
   useEffect(() => {
     const handleFocus = () => {
       if (isTeacher && activeTab === 'evaluation' && selectedAssignmentId) {
-        loadEvalGrades(selectedAssignmentId, true);
+        if (!recheckingAllRef.current && !recheckingSubIdRef.current && !triggeringRef.current) {
+          loadEvalGrades(selectedAssignmentId, true);
+        }
       } else if (!isTeacher) {
         loadStudentGrades();
       }
@@ -266,13 +293,18 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
     try {
       const updatedGrade = await recheckSubmissionApi(submissionId);
-      setEvalGrades((prev) =>
-        prev.map((g) => (g.submission_id === submissionId ? updatedGrade : g))
-      );
+      // Fetch fresh grades first so table data, buttons, and toast update simultaneously
+      const freshGrades = await getAdminAssignmentGradesApi(selectedAssignmentId);
+      setEvalGrades(freshGrades);
+      setRecheckingSubId(null);
       setToast({ message: `Re-evaluated notebook for ${updatedGrade.student_name}! Status: Graded (${updatedGrade.marks}/${updatedGrade.max_marks})`, type: 'success' });
-      await loadEvalGrades(selectedAssignmentId);
     } catch (err) {
       const errMsg = err.message || '';
+      try {
+        const freshGrades = await getAdminAssignmentGradesApi(selectedAssignmentId);
+        setEvalGrades(freshGrades);
+      } catch {}
+      setRecheckingSubId(null);
       if (errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('429')) {
         setQuotaError(errMsg);
         setToast({
@@ -283,9 +315,6 @@ export default function ClassDetailPage({ classId, user, onBack }) {
       } else {
         setToast({ message: errMsg || 'Recheck failed', type: 'error' });
       }
-      await loadEvalGrades(selectedAssignmentId);
-    } finally {
-      setRecheckingSubId(null);
     }
   };
 
@@ -295,17 +324,25 @@ export default function ClassDetailPage({ classId, user, onBack }) {
     setRecheckingAll(true);
     setQuotaError(null);
 
-    // Immediately show 'processing' status badge on ALL student rows
+    // Immediately show 'processing' status badge on all submitted student rows
     setEvalGrades((prev) =>
-      prev.map((g) => ({ ...g, submission_status: 'processing' }))
+      prev.map((g) => (g.submission_status !== 'no_submission' ? { ...g, submission_status: 'processing' } : g))
     );
 
     try {
       await recheckAllAssignmentApi(selectedAssignmentId);
+      // Fetch fresh grades first so table statuses, recheck all button, individual buttons and popup toast update simultaneously
+      const freshGrades = await getAdminAssignmentGradesApi(selectedAssignmentId);
+      setEvalGrades(freshGrades);
+      setRecheckingAll(false);
       setToast({ message: 'Recheck completed for all student submissions using latest rubric!', type: 'success' });
-      await loadEvalGrades(selectedAssignmentId);
     } catch (err) {
       const errMsg = err.message || '';
+      try {
+        const freshGrades = await getAdminAssignmentGradesApi(selectedAssignmentId);
+        setEvalGrades(freshGrades);
+      } catch {}
+      setRecheckingAll(false);
       if (errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('429')) {
         setQuotaError(errMsg);
         setToast({
@@ -316,9 +353,6 @@ export default function ClassDetailPage({ classId, user, onBack }) {
       } else {
         setToast({ message: errMsg || 'Recheck all failed', type: 'error' });
       }
-      await loadEvalGrades(selectedAssignmentId);
-    } finally {
-      setRecheckingAll(false);
     }
   };
 
@@ -334,13 +368,20 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
     try {
       const res = await triggerGradingApi(selectedAssignmentId, directMode);
+      const freshGrades = await getAdminAssignmentGradesApi(selectedAssignmentId);
+      setEvalGrades(freshGrades);
+      setTriggering(false);
       setToast({
         message: directMode ? 'Grading completed!' : 'Batch grading queued!',
         type: 'success',
       });
-      await loadEvalGrades(selectedAssignmentId);
     } catch (err) {
       const errMsg = err.message || '';
+      try {
+        const freshGrades = await getAdminAssignmentGradesApi(selectedAssignmentId);
+        setEvalGrades(freshGrades);
+      } catch {}
+      setTriggering(false);
       if (errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('429')) {
         setQuotaError(errMsg);
         setToast({
@@ -351,9 +392,6 @@ export default function ClassDetailPage({ classId, user, onBack }) {
       } else {
         setToast({ message: errMsg || 'Grading failed', type: 'error' });
       }
-      await loadEvalGrades(selectedAssignmentId);
-    } finally {
-      setTriggering(false);
     }
   };
 
@@ -438,7 +476,17 @@ export default function ClassDetailPage({ classId, user, onBack }) {
 
   if (loading) {
     return (
-      <LoadingSpinner text="Loading class details & assignments..." size={64} minHeight="500px" />
+      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px', background: 'transparent' }}>
+        <button
+          onClick={onBack}
+          className="btn-ghost"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '16px', fontSize: '0.88rem' }}
+        >
+          <ArrowLeft size={16} />
+          <span>Back to All Classes</span>
+        </button>
+        <LoadingSpinner text="Loading class details & assignments..." size={60} minHeight="55vh" delay={300} />
+      </div>
     );
   }
 
@@ -1035,15 +1083,10 @@ export default function ClassDetailPage({ classId, user, onBack }) {
               >
                 {recheckingAll ? (
                   <>
-                    <div
-                      className="animate-spin"
-                      style={{
-                        width: '16px',
-                        height: '16px',
-                        border: '2.5px solid var(--primary)',
-                        borderTopColor: 'transparent',
-                        borderRadius: '50%'
-                      }}
+                    <img
+                      src={isLight ? lightRecheckAllSvg : darkRecheckAllSvg}
+                      alt="Re-evaluating..."
+                      style={{ width: '18px', height: '18px', display: 'inline-block', verticalAlign: 'middle' }}
                     />
                     <span style={{ fontWeight: '700' }}>Re-evaluating All Submissions...</span>
                   </>
@@ -1377,6 +1420,11 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                 ) : (
                   filteredGrades.map((item) => {
                     const isNoSub = item.submission_status === 'no_submission' || !item.submission_id;
+                    const isThisRechecking =
+                      (!isNoSub && recheckingSubId === item.submission_id) ||
+                      (recheckingAll && !isNoSub) ||
+                      item.submission_status === 'processing';
+
                     return (
                       <tr key={item.submission_id || item.student_id} style={{ borderBottom: '1px solid var(--border-subtle)', background: isNoSub ? 'rgba(239, 68, 68, 0.02)' : 'transparent' }}>
                         <td style={{ padding: '14px 18px' }}>
@@ -1391,21 +1439,23 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                             <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '4px 10px', fontSize: '0.74rem' }}>
                               No Submission
                             </span>
+                          ) : isThisRechecking ? (
+                            <span className="badge badge-processing">
+                              <img
+                                src={isLight ? pinkLoadingSvg : lavenderLoadingSvg}
+                                alt="processing"
+                                style={{
+                                  width: '13px',
+                                  height: '13px',
+                                  display: 'inline-block',
+                                  verticalAlign: 'middle',
+                                  marginRight: '5px'
+                                }}
+                              />
+                              processing
+                            </span>
                           ) : (
                             <span className={`badge badge-${item.submission_status}`}>
-                              {item.submission_status === 'processing' && (
-                                <div
-                                  className="animate-spin"
-                                  style={{
-                                    width: '10px',
-                                    height: '10px',
-                                    border: '2px solid currentColor',
-                                    borderTopColor: 'transparent',
-                                    borderRadius: '50%',
-                                    marginRight: '4px'
-                                  }}
-                                />
-                              )}
                               {item.submission_status}
                             </span>
                           )}
@@ -1486,27 +1536,43 @@ export default function ClassDetailPage({ classId, user, onBack }) {
                             {/* Recheck Button */}
                             <button
                               onClick={() => setConfirmRecheckSub(item)}
-                              disabled={isNoSub || recheckingSubId === item.submission_id}
+                              disabled={isNoSub || isThisRechecking}
                               className="btn-secondary"
                               style={{
                                 padding: '6px 12px',
                                 fontSize: '0.78rem',
                                 display: 'inline-flex',
                                 alignItems: 'center',
+                                justifyContent: 'center',
                                 gap: '6px',
-                                borderColor: 'rgba(99, 102, 241, 0.4)',
+                                borderColor: isThisRechecking
+                                  ? (isLight ? 'rgba(255, 106, 0, 0.45)' : 'rgba(99, 102, 241, 0.45)')
+                                  : 'var(--border-subtle)',
                                 color: isNoSub ? 'var(--text-dim)' : 'var(--primary)',
                                 opacity: isNoSub ? 0.4 : 1,
-                                cursor: isNoSub ? 'not-allowed' : 'pointer'
+                                cursor: isNoSub || isThisRechecking ? 'not-allowed' : 'pointer',
+                                minWidth: isThisRechecking ? '58px' : 'auto'
                               }}
-                              title={isNoSub ? "Cannot recheck: student did not submit a notebook" : "Recheck this student submission with latest prompt & rubric"}
+                              title={
+                                isNoSub
+                                  ? 'Cannot recheck: student did not submit a notebook'
+                                  : isThisRechecking
+                                  ? 'Currently re-evaluating notebook...'
+                                  : 'Recheck this student submission with latest prompt & rubric'
+                              }
                             >
-                              {recheckingSubId === item.submission_id ? (
-                                <div className="animate-spin" style={{ width: '13px', height: '13px', border: '2px solid var(--primary)', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                              {isThisRechecking ? (
+                                <img
+                                  src={isLight ? orangeRecheckSvg : blueRecheckSvg}
+                                  alt="Rechecking..."
+                                  style={{ width: '16px', height: '16px', display: 'block' }}
+                                />
                               ) : (
-                                <RotateCcw size={13} />
+                                <>
+                                  <RotateCcw size={13} />
+                                  <span>Recheck</span>
+                                </>
                               )}
-                              <span>Recheck</span>
                             </button>
 
                             {/* Edit Grade Button */}
