@@ -32,6 +32,9 @@ export default function ClassroomPage({ user, onSelectClass }) {
 
   useEffect(() => {
     loadClasses();
+    const handleRefresh = () => loadClasses();
+    window.addEventListener('classes-updated', handleRefresh);
+    return () => window.removeEventListener('classes-updated', handleRefresh);
   }, [user]);
 
   const handleCopyCode = (e, code) => {

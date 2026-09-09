@@ -197,3 +197,87 @@ This code is valid for 10 minutes. If you did not request this, please ignore th
 
     sent = await asyncio.to_thread(_send_smtp_email_sync, to_email, subject, html_content, text_content)
     return (sent, otp)
+
+
+async def send_teacher_invitation_email(
+    to_email: str,
+    inviter_name: str,
+    class_name: str,
+    dashboard_url: str = "http://localhost:5173",
+) -> bool:
+    """
+    Sends an invitation email to a prospective co-teacher with a direct link to the AutoGrade Classroom dashboard.
+    """
+    subject = f"Invitation to co-teach '{class_name}' on AutoGrade Classroom"
+
+    print(f"\n========================================================")
+    print(f" [AutoGrade Co-Teacher Invitation]")
+    print(f" To: {to_email}")
+    print(f" Class: {class_name}")
+    print(f" Invited By: {inviter_name}")
+    print(f" Dashboard URL: {dashboard_url}")
+    print(f"========================================================\n")
+
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #e2e8f0; margin: 0; padding: 24px; }}
+    .card {{ max-width: 540px; margin: 0 auto; background: #131b2e; border: 1px solid #1e293b; border-radius: 16px; padding: 36px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }}
+    .logo {{ font-size: 20px; font-weight: 700; color: #ffffff; margin-bottom: 24px; }}
+    .logo span {{ color: #FF6A00; }}
+    .badge {{ display: inline-block; background: rgba(255, 106, 0, 0.15); color: #FF6A00; border: 1px solid rgba(255, 106, 0, 0.3); border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 700; margin-bottom: 16px; }}
+    .highlight {{ color: #ffffff; font-weight: 600; }}
+    .btn-container {{ text-align: center; margin: 32px 0; }}
+    .btn {{ display: inline-block; background: linear-gradient(135deg, #FF6A00 0%, #FF2D8D 100%); color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 15px; padding: 14px 32px; border-radius: 10px; box-shadow: 0 4px 16px rgba(255, 106, 0, 0.35); }}
+    .note {{ background: #0f172a; border-left: 3px solid #FF6A00; padding: 12px 16px; border-radius: 0 8px 8px 0; font-size: 13px; color: #94a3b8; margin: 20px 0; }}
+    .footer {{ font-size: 12px; color: #64748b; margin-top: 30px; border-top: 1px solid #1e293b; padding-top: 16px; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">AutoGrade <span>Classroom</span></div>
+    <div class="badge">CO-TEACHER INVITATION</div>
+    <h2 style="color: #ffffff; margin-top: 0; font-size: 22px;">Join as Co-Teacher</h2>
+    <p style="color: #cbd5e1; font-size: 15px; line-height: 1.6;">
+      Hello,<br><br>
+      <span class="highlight">{inviter_name}</span> has invited you to co-teach <strong style="color: #FF6A00;">{class_name}</strong> on AutoGrade Classroom.
+    </p>
+    <p style="color: #94a3b8; font-size: 14px; line-height: 1.5;">
+      As a co-teacher, you will be able to manage assignments, view student submissions, evaluate ML notebooks, and collaborate with other instructors.
+    </p>
+
+    <div class="note">
+      <strong>Action Required:</strong> Click the button below to visit your dashboard, then open the <strong>Notification Bell</strong> in the upper right header to <strong>Accept</strong> or <strong>Decline</strong> this invitation.
+    </div>
+
+    <div class="btn-container">
+      <a href="{dashboard_url}" class="btn" target="_blank">Open Dashboard & View Invite</a>
+    </div>
+
+    <div class="footer">
+      Automated Notebook Grading & Classroom Platform • Sent from {settings.ADMIN_EMAIL or 'AutoGrade Classroom'}
+    </div>
+  </div>
+</body>
+</html>"""
+
+    text_content = f"""AutoGrade Classroom - Co-Teacher Invitation
+
+Hello,
+
+{inviter_name} has invited you to co-teach '{class_name}' on AutoGrade Classroom.
+
+As a co-teacher, you will be able to manage assignments, view student submissions, evaluate ML notebooks, and collaborate with instructors.
+
+To respond:
+1. Open your dashboard: {dashboard_url}
+2. Click on the Notification Bell in the upper right header.
+3. Choose 'Accept' or 'Decline' on the invitation.
+
+Sent from AutoGrade Classroom
+"""
+
+    return await asyncio.to_thread(_send_smtp_email_sync, to_email, subject, html_content, text_content)
+

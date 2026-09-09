@@ -389,6 +389,61 @@ export async function getClassStudentsApi(classId) {
   return apiRequest(`/classes/${classId}/students`);
 }
 
+export async function getClassPeopleApi(classId) {
+  return apiRequest(`/classes/${classId}/people`);
+}
+
+export async function inviteClassTeacherApi(classId, email) {
+  return apiRequest(`/classes/${classId}/teachers/invite`, {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function respondTeacherInvitationApi(invitationId, action) {
+  return apiRequest(`/teachers/invitations/${invitationId}/respond`, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
+  });
+}
+
+export async function removeClassTeacherApi(classId, teacherId) {
+  return apiRequest(`/classes/${classId}/teachers/${teacherId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function removeClassStudentApi(classId, studentId) {
+  return apiRequest(`/classes/${classId}/students/${studentId}`, {
+    method: 'DELETE',
+  });
+}
+
+// ── In-App Notifications APIs ──
+
+export async function getUserNotificationsApi() {
+  return apiRequest('/notifications');
+}
+
+export async function markNotificationReadApi(notificationId) {
+  return apiRequest(`/notifications/${notificationId}/read`, {
+    method: 'PATCH',
+  });
+}
+
+export async function markAllNotificationsReadApi() {
+  return apiRequest('/notifications/mark-all-read', {
+    method: 'POST',
+  });
+}
+
+export async function deleteNotificationApi(notificationId) {
+  return apiRequest(`/notifications/${notificationId}`, {
+    method: 'DELETE',
+  });
+}
+
 export function getAssignmentAttachmentUrl(assignmentId) {
   return `/assignments/${assignmentId}/attachment`;
 }
+

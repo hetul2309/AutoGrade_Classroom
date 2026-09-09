@@ -26,6 +26,13 @@ class SubmissionStatus(str, enum.Enum):
     error = "error"             # pipeline failed for this submission
 
 
+class InvitationStatus(str, enum.Enum):
+    pending = "pending"
+    accepted = "accepted"
+    declined = "declined"
+
+
+
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class Student(Base):
@@ -64,6 +71,18 @@ class Student(Base):
     class_enrollments: Mapped[list["ClassEnrollment"]] = relationship(
         "ClassEnrollment", back_populates="student", cascade="all, delete-orphan"
     )
+    co_teaching_classes: Mapped[list["ClassTeacher"]] = relationship(
+        "ClassTeacher", back_populates="teacher", cascade="all, delete-orphan"
+    )
+    sent_invitations: Mapped[list["TeacherInvitation"]] = relationship(
+        "TeacherInvitation", back_populates="inviter", foreign_keys="TeacherInvitation.inviter_id", cascade="all, delete-orphan"
+    )
+    received_invitations: Mapped[list["TeacherInvitation"]] = relationship(
+        "TeacherInvitation", back_populates="invitee", foreign_keys="TeacherInvitation.invitee_id", cascade="all, delete-orphan"
+    )
+    notifications: Mapped[list["UserNotification"]] = relationship(
+        "UserNotification", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Student id={self.id} email={self.email} role={self.role}>"
@@ -98,6 +117,12 @@ class Class(Base):
     assignments: Mapped[list["Assignment"]] = relationship(
         "Assignment", back_populates="class_obj", cascade="all, delete-orphan"
     )
+    co_teachers: Mapped[list["ClassTeacher"]] = relationship(
+        "ClassTeacher", back_populates="class_obj", cascade="all, delete-orphan"
+    )
+    teacher_invitations: Mapped[list["TeacherInvitation"]] = relationship(
+        "TeacherInvitation", back_populates="class_obj", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Class id={self.id} name={self.name!r} code={self.code!r}>"
@@ -131,7 +156,120 @@ class ClassEnrollment(Base):
         return f"<ClassEnrollment class_id={self.class_id} student_id={self.student_id}>"
 
 
+class ClassTeacher(Base):
+    """
+    Co-teachers added to a class.
+    Primary creator remains in classes.teacher_id.
+    """
+    __tablename__ = "class_teachers"
+    __table_args__ = (
+        UniqueConstraint("class_id", "teacher_id", name="uq_class_co_teacher"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    class_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    teacher_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # Relationships
+    class_obj: Mapped["Class"] = relationship("Class", back_populates="co_teachers")
+    teacher: Mapped["Student"] = relationship("Student", back_populates="co_teaching_classes")
+
+    def __repr__(self) -> str:
+        return f"<ClassTeacher class_id={self.class_id} teacher_id={self.teacher_id}>"
+
+
+class TeacherInvitation(Base):
+    """
+    Invitations sent by the class creator to other teachers.
+    """
+    __tablename__ = "teacher_invitations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    class_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    inviter_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    invitee_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    status: Mapped[InvitationStatus] = mapped_column(
+        Enum(InvitationStatus, name="invitation_status"),
+        default=InvitationStatus.pending,
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    responded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Relationships
+    class_obj: Mapped["Class"] = relationship("Class", back_populates="teacher_invitations")
+    inviter: Mapped["Student"] = relationship(
+        "Student", back_populates="sent_invitations", foreign_keys=[inviter_id]
+    )
+    invitee: Mapped["Student"] = relationship(
+        "Student", back_populates="received_invitations", foreign_keys=[invitee_id]
+    )
+    notification: Mapped[Optional["UserNotification"]] = relationship(
+        "UserNotification", back_populates="invitation", uselist=False, cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<TeacherInvitation id={self.id} class_id={self.class_id} invitee_id={self.invitee_id} status={self.status}>"
+
+
+class UserNotification(Base):
+    """
+    Persistent notifications stored for users.
+    Supports teacher invitations, grade publications, and system alerts.
+    """
+    __tablename__ = "user_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="general", index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    invitation_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("teacher_invitations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    class_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("classes.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # Relationships
+    user: Mapped["Student"] = relationship("Student", back_populates="notifications")
+    invitation: Mapped[Optional["TeacherInvitation"]] = relationship(
+        "TeacherInvitation", back_populates="notification"
+    )
+    class_obj: Mapped[Optional["Class"]] = relationship("Class")
+
+    def __repr__(self) -> str:
+        return f"<UserNotification id={self.id} user_id={self.user_id} type={self.type} is_read={self.is_read}>"
+
+
 class Assignment(Base):
+
     """
     A lab assignment within a class. Contains the task description and rubric
     that will be sent to the LLM for grading, plus optional PDF/attachment for students.

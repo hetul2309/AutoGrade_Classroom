@@ -128,6 +128,77 @@ class ClassMemberResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TeacherInviteRequest(BaseModel):
+    email: str
+
+
+class InvitationActionRequest(BaseModel):
+    action: str  # "accept" or "decline"
+
+
+class TeacherInvitationResponse(BaseModel):
+    id: int
+    class_id: int
+    class_name: str
+    inviter_id: int
+    inviter_name: str
+    invitee_id: int
+    invitee_email: str
+    status: str
+    created_at: datetime
+    responded_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClassTeacherMember(BaseModel):
+    id: int
+    name: str
+    email: str
+    role: str  # "owner" or "co_teacher"
+    is_owner: bool
+    avatar_url: Optional[str] = None
+    added_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClassStudentMember(BaseModel):
+    id: int
+    name: str
+    email: str
+    student_id_str: Optional[str] = None
+    avatar_url: Optional[str] = None
+    enrolled_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClassPeopleResponse(BaseModel):
+    class_id: int
+    teachers: list[ClassTeacherMember]
+    students: list[ClassStudentMember]
+    is_owner: bool
+    is_teacher: bool
+
+
+class NotificationResponse(BaseModel):
+    id: int
+    user_id: int
+    type: str
+    title: str
+    message: str
+    is_read: bool
+    invitation_id: Optional[int] = None
+    class_id: Optional[int] = None
+    invitation_status: Optional[str] = None
+    class_name: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+
 # ── Assignment Schemas ────────────────────────────────────────────────────────
 
 class AssignmentCreateRequest(BaseModel):

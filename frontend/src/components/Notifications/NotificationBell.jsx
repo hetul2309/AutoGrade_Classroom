@@ -1,55 +1,55 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Bell } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
+import {
+  getUserNotificationsApi,
+  markNotificationReadApi,
+  markAllNotificationsReadApi,
+  deleteNotificationApi,
+  respondTeacherInvitationApi,
+} from '../../api';
 
-const INITIAL_NOTIFICATIONS = [
-  {
-    id: 'notif-1',
-    type: 'grade',
-    title: 'Assignment Graded',
-    message: 'Lab 3: Feature Engineering & Preprocessing graded (95/100).',
-    time: '5m ago',
-    isRead: false,
-    badge: 'Graded',
-  },
-  {
-    id: 'notif-2',
-    type: 'submission',
-    title: 'Lab 4 Submission Received',
-    message: 'Notebook uploaded to Cloudinary cache & queued for AI evaluation.',
-    time: '1h ago',
-    isRead: false,
-    badge: 'AI Ready',
-  },
-  {
-    id: 'notif-3',
-    type: 'announcement',
-    title: 'New Class Discussion',
-    message: 'Prof. Miller posted an announcement regarding Lab 4 worst-case loss.',
-    time: '3h ago',
-    isRead: true,
-  },
-];
-
-export default function NotificationBell({ currentUser, onNavigateToItem }) {
+export default function NotificationBell({ currentUser, onNavigateToItem, onNotificationAction }) {
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState(() => {
-    try {
-      const saved = localStorage.getItem('autograde_notifications');
-      return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
-    } catch {
-      return INITIAL_NOTIFICATIONS;
-    }
-  });
-
+  const [notifications, setNotifications] = useState([]);
   const bellRef = useRef(null);
 
-  // Save notifications locally
-  useEffect(() => {
+  const fetchNotifications = useCallback(async () => {
+    if (!currentUser) return;
     try {
-      localStorage.setItem('autograde_notifications', JSON.stringify(notifications));
-    } catch {}
-  }, [notifications]);
+      const data = await getUserNotificationsApi();
+      if (Array.isArray(data)) {
+        const formatted = data.map((n) => ({
+          id: n.id,
+          type: n.type,
+          title: n.title,
+          message: n.message,
+          isRead: n.is_read,
+          invitationId: n.invitation_id,
+          invitationStatus: n.invitation_status,
+          classId: n.class_id,
+          className: n.class_name,
+          time: n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+        }));
+        setNotifications(formatted);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch user notifications:', err);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 15000); // 15s poll
+    const handleFocus = () => fetchNotifications();
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('notifications-refresh', fetchNotifications);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('notifications-refresh', fetchNotifications);
+    };
+  }, [fetchNotifications]);
 
   // Click outside to close
   useEffect(() => {
@@ -66,19 +66,57 @@ export default function NotificationBell({ currentUser, onNavigateToItem }) {
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
-  const handleMarkAsRead = (id) => {
+  const handleMarkAsRead = async (id) => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
     );
+    try {
+      await markNotificationReadApi(id);
+    } catch {}
   };
 
-  const handleMarkAllAsRead = () => {
+  const handleMarkAllAsRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    try {
+      await markAllNotificationsReadApi();
+    } catch {}
   };
 
-  const handleDeleteNotification = (id) => {
+  const handleDeleteNotification = async (id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+    try {
+      await deleteNotificationApi(id);
+    } catch {}
   };
+
+  const handleRespondInvitation = async (invitationId, action, notif) => {
+    try {
+      const res = await respondTeacherInvitationApi(invitationId, action);
+      setNotifications((prev) =>
+        prev.map((n) =>
+          (n.invitationId === invitationId || n.id === notif.id)
+            ? { ...n, invitationStatus: action === 'accept' ? 'accepted' : 'declined', isRead: true }
+            : n
+        )
+      );
+      // Trigger global classes refresh event
+      window.dispatchEvent(new CustomEvent('classes-updated', { detail: { classId: notif.classId } }));
+      if (onNotificationAction) {
+        onNotificationAction({
+          type: 'success',
+          message: res.message || (action === 'accept' ? 'Accepted invitation!' : 'Invitation declined.'),
+        });
+      }
+    } catch (err) {
+      if (onNotificationAction) {
+        onNotificationAction({
+          type: 'error',
+          message: err.message || `Failed to ${action} invitation.`,
+        });
+      }
+    }
+  };
+
 
   return (
     <div style={{ position: 'relative' }} ref={bellRef}>
@@ -148,6 +186,7 @@ export default function NotificationBell({ currentUser, onNavigateToItem }) {
           onMarkAsRead={handleMarkAsRead}
           onMarkAllAsRead={handleMarkAllAsRead}
           onDeleteNotification={handleDeleteNotification}
+          onRespondInvitation={handleRespondInvitation}
           onSelectNotification={(notif) => {
             setOpen(false);
             if (onNavigateToItem) onNavigateToItem(notif);

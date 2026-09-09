@@ -12,7 +12,8 @@ export default function Navbar({
   onToggleTheme,
   onNavigateView,
   onOpenProfile,
-  onRequestLogout
+  onRequestLogout,
+  onNotificationAction,
 }) {
   const isAdmin = currentUser?.role === 'admin';
   const isLight = theme === 'light';
@@ -149,7 +150,7 @@ export default function Navbar({
           </button>
 
           {/* Notification Bell Popup */}
-          <NotificationBell currentUser={currentUser} />
+          <NotificationBell currentUser={currentUser} onNotificationAction={onNotificationAction} />
 
           {/* Interactive Profile Dropdown Button */}
           {currentUser && (

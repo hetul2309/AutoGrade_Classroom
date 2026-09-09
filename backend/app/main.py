@@ -60,10 +60,14 @@ from app.models import (
     Assignment,
     Class,
     ClassEnrollment,
+    ClassTeacher,
     Grade,
+    InvitationStatus,
     Student,
     Submission,
     SubmissionStatus,
+    TeacherInvitation,
+    UserNotification,
     UserRole,
 )
 from app.pipeline import run_grading_pipeline
@@ -72,7 +76,7 @@ from app.storage import (
     ensure_local_file,
     upload_file_to_cloudinary,
 )
-from app.email_service import generate_otp, send_otp_email, verify_stored_otp
+from app.email_service import generate_otp, send_otp_email, send_teacher_invitation_email, verify_stored_otp
 from app.schemas import (
     AdminClassItem,
     AdminGradeItem,
@@ -85,15 +89,22 @@ from app.schemas import (
     ClassCreateRequest,
     ClassJoinRequest,
     ClassMemberResponse,
+    ClassPeopleResponse,
     ClassResponse,
+    ClassStudentMember,
+    ClassTeacherMember,
     GoogleAuthRequest,
     GradePatchRequest,
+    InvitationActionRequest,
     LoginRequest,
+    NotificationResponse,
     RegisterRequest,
     ResetPasswordRequest,
     SendOtpRequest,
     StudentGradeView,
     SubmissionResponse,
+    TeacherInviteRequest,
+    TeacherInvitationResponse,
     TokenResponse,
     TriggerGradingResponse,
     UpdateProfileRequest,
@@ -625,6 +636,26 @@ def format_assignment_response(a: Assignment, is_admin: bool = True) -> Assignme
 
 # ── Classes Endpoints (Google Classroom Clone) ────────────────────────────────
 
+async def is_user_teacher_or_admin(class_id: int, user: Student, session: AsyncSession) -> bool:
+    """Returns True if the user is the class creator, a co-teacher, or an admin."""
+    if user.role == UserRole.admin:
+        return True
+    target_class = await session.get(Class, class_id)
+    if not target_class:
+        return False
+    if target_class.teacher_id == user.id:
+        return True
+    co_teacher = await session.execute(
+        select(ClassTeacher.id).where(
+            and_(
+                ClassTeacher.class_id == class_id,
+                ClassTeacher.teacher_id == user.id,
+            )
+        )
+    )
+    return co_teacher.scalar_one_or_none() is not None
+
+
 @app.get("/classes", response_model=List[ClassResponse], tags=["Classes"])
 async def list_classes(
     session: AsyncSession = Depends(get_db),
@@ -632,12 +663,18 @@ async def list_classes(
 ):
     """
     Lists classes for the authenticated user.
-    Strict isolation rule:
-    A user (teacher or student) can ONLY see classes that they created OR are enrolled in.
+    Isolation rule:
+    A user can see classes that they created, are a co-teacher in, OR are enrolled in.
     """
     enrolled_class_ids_subquery = (
         select(ClassEnrollment.class_id)
         .where(ClassEnrollment.student_id == current_user.id)
+        .scalar_subquery()
+    )
+
+    co_taught_class_ids_subquery = (
+        select(ClassTeacher.class_id)
+        .where(ClassTeacher.teacher_id == current_user.id)
         .scalar_subquery()
     )
 
@@ -646,6 +683,7 @@ async def list_classes(
         .where(
             or_(
                 Class.teacher_id == current_user.id,
+                Class.id.in_(co_taught_class_ids_subquery),
                 Class.id.in_(enrolled_class_ids_subquery),
             )
         )
@@ -654,6 +692,11 @@ async def list_classes(
 
     res = await session.execute(stmt)
     classes = res.scalars().all()
+
+    co_taught_res = await session.execute(
+        select(ClassTeacher.class_id).where(ClassTeacher.teacher_id == current_user.id)
+    )
+    co_taught_set = set(co_taught_res.scalars().all())
 
     class_responses = []
     for c in classes:
@@ -670,6 +713,8 @@ async def list_classes(
         )
         assignment_count = a_count_res.scalar() or 0
 
+        is_teacher = (c.teacher_id == current_user.id) or (c.id in co_taught_set)
+
         class_responses.append(
             ClassResponse(
                 id=c.id,
@@ -681,7 +726,7 @@ async def list_classes(
                 teacher_name=teacher_name,
                 student_count=student_count,
                 assignment_count=assignment_count,
-                is_teacher=(c.teacher_id == current_user.id),
+                is_teacher=is_teacher,
                 created_at=c.created_at,
             )
         )
@@ -748,6 +793,27 @@ async def join_class(
             detail=f"No class found with code '{cleaned_code}'. Please verify the code with your instructor.",
         )
 
+    # Mutual Exclusivity: Teachers (creator or co-teacher) cannot enroll as students
+    if target_class.teacher_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You are the creator of this class and cannot enroll as a student.",
+        )
+
+    co_teacher = await session.execute(
+        select(ClassTeacher.id).where(
+            and_(
+                ClassTeacher.class_id == target_class.id,
+                ClassTeacher.teacher_id == current_user.id,
+            )
+        )
+    )
+    if co_teacher.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You are a teacher of this class and cannot enroll as a student.",
+        )
+
     # Check if already enrolled
     enrolled_res = await session.execute(
         select(ClassEnrollment).where(
@@ -785,14 +851,15 @@ async def join_class(
         teacher_name=teacher_name,
         student_count=student_count,
         assignment_count=assignment_count,
+        is_teacher=False,
         created_at=target_class.created_at,
     )
 
 
 async def get_accessible_class(class_id: int, user: Student, session: AsyncSession) -> Class:
     """
-    Verifies that the user is either the teacher who created the class
-    or an enrolled student. Rejects unauthorized access with 403 Forbidden.
+    Verifies that the user is either the creator, a co-teacher, or an enrolled student.
+    Rejects unauthorized access with 403 Forbidden.
     """
     target_class = await session.get(Class, class_id)
     if not target_class:
@@ -801,8 +868,19 @@ async def get_accessible_class(class_id: int, user: Student, session: AsyncSessi
     if target_class.teacher_id == user.id:
         return target_class
 
+    co_teacher = await session.execute(
+        select(ClassTeacher.id).where(
+            and_(
+                ClassTeacher.class_id == class_id,
+                ClassTeacher.teacher_id == user.id,
+            )
+        )
+    )
+    if co_teacher.scalar_one_or_none():
+        return target_class
+
     enrolled = await session.execute(
-        select(ClassEnrollment).where(
+        select(ClassEnrollment.id).where(
             and_(
                 ClassEnrollment.class_id == class_id,
                 ClassEnrollment.student_id == user.id,
@@ -812,7 +890,7 @@ async def get_accessible_class(class_id: int, user: Student, session: AsyncSessi
     if not enrolled.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. You are neither the instructor nor an enrolled student in this class.",
+            detail="Access denied. You are neither an instructor nor an enrolled student in this class.",
         )
     return target_class
 
@@ -840,6 +918,10 @@ async def get_class(
         )
     ).scalar() or 0
 
+    is_teacher = (target_class.teacher_id == current_user.id) or (
+        await is_user_teacher_or_admin(id, current_user, session)
+    )
+
     return ClassResponse(
         id=target_class.id,
         name=target_class.name,
@@ -850,8 +932,10 @@ async def get_class(
         teacher_name=teacher_name,
         student_count=s_count,
         assignment_count=a_count,
+        is_teacher=is_teacher,
         created_at=target_class.created_at,
     )
+
 
 
 
@@ -870,7 +954,7 @@ async def list_class_assignments(
         .order_by(Assignment.deadline.asc())
     )
     res = await session.execute(stmt)
-    is_instructor_or_admin = (target_class.teacher_id == current_user.id) or (current_user.role == UserRole.admin)
+    is_instructor_or_admin = await is_user_teacher_or_admin(id, current_user, session)
     return [format_assignment_response(a, is_admin=is_instructor_or_admin) for a in res.scalars().all()]
 
 
@@ -901,10 +985,10 @@ async def create_class_assignment(
     target_class = await session.get(Class, id)
     if not target_class:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
-    if target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+    if not await is_user_teacher_or_admin(id, current_user, session):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the teacher who created this class can publish assignments for it.",
+            detail="Only teachers of this class can publish assignments.",
         )
     try:
         deadline_dt = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
@@ -985,11 +1069,10 @@ async def update_assignment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
 
     if assignment.class_id:
-        target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+        if not await is_user_teacher_or_admin(assignment.class_id, current_user, session):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only the teacher who created this class can edit its assignments.",
+                detail="Only teachers of this class can edit its assignments.",
             )
 
     content_type = request.headers.get("content-type", "").lower()
@@ -1146,7 +1229,524 @@ async def list_class_students(
     return members
 
 
+@app.get("/classes/{id}/people", response_model=ClassPeopleResponse, tags=["Classes"])
+async def get_class_people(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """
+    Returns full list of teachers (creator + co-teachers) and enrolled students.
+    """
+    target_class = await get_accessible_class(id, current_user, session)
+
+    # Primary creator / lead instructor
+    primary_teacher = await session.get(Student, target_class.teacher_id)
+    teachers_list = []
+    if primary_teacher:
+        teachers_list.append(
+            ClassTeacherMember(
+                id=primary_teacher.id,
+                name=primary_teacher.name,
+                email=primary_teacher.email,
+                role="owner",
+                is_owner=True,
+                avatar_url=primary_teacher.avatar_url,
+                added_at=target_class.created_at,
+            )
+        )
+
+    # Co-teachers
+    stmt_coteachers = (
+        select(Student, ClassTeacher.added_at)
+        .join(ClassTeacher, ClassTeacher.teacher_id == Student.id)
+        .where(ClassTeacher.class_id == id)
+        .order_by(ClassTeacher.added_at.asc())
+    )
+    res_coteachers = await session.execute(stmt_coteachers)
+    for teacher_obj, added_at in res_coteachers.all():
+        teachers_list.append(
+            ClassTeacherMember(
+                id=teacher_obj.id,
+                name=teacher_obj.name,
+                email=teacher_obj.email,
+                role="co_teacher",
+                is_owner=False,
+                avatar_url=teacher_obj.avatar_url,
+                added_at=added_at,
+            )
+        )
+
+    # Enrolled students
+    stmt_students = (
+        select(Student, ClassEnrollment.enrolled_at)
+        .join(ClassEnrollment, ClassEnrollment.student_id == Student.id)
+        .where(ClassEnrollment.class_id == id)
+        .order_by(Student.name.asc())
+    )
+    res_students = await session.execute(stmt_students)
+    students_list = []
+    for st_obj, enrolled_at in res_students.all():
+        students_list.append(
+            ClassStudentMember(
+                id=st_obj.id,
+                name=st_obj.name,
+                email=st_obj.email,
+                student_id_str=st_obj.student_id_str,
+                avatar_url=st_obj.avatar_url,
+                enrolled_at=enrolled_at,
+            )
+        )
+
+    is_owner = (target_class.teacher_id == current_user.id)
+    is_teacher = is_owner or any(t.id == current_user.id for t in teachers_list)
+
+    return ClassPeopleResponse(
+        class_id=id,
+        teachers=teachers_list,
+        students=students_list,
+        is_owner=is_owner,
+        is_teacher=is_teacher,
+    )
+
+
+@app.post("/classes/{id}/teachers/invite", response_model=TeacherInvitationResponse, tags=["Classes"])
+async def invite_class_teacher(
+    id: int,
+    payload: TeacherInviteRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """
+    Class creator invites a registered user to co-teach.
+    Strictly checks that only the creator can invite and that the user is not an enrolled student.
+    Dispatches in-app notification and styled invitation email.
+    """
+    target_class = await session.get(Class, id)
+    if not target_class:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    if target_class.teacher_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the class creator can invite co-teachers.",
+        )
+
+    clean_email = payload.email.strip().lower()
+    target_user_res = await session.execute(
+        select(Student).where(func.lower(Student.email) == clean_email)
+    )
+    target_user = target_user_res.scalar_one_or_none()
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No account found with email '{payload.email}'. Please ask them to sign up on AutoGrade Classroom first.",
+        )
+
+    if target_user.id == target_class.teacher_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This user is already the primary creator of this class.",
+        )
+
+    existing_coteacher = await session.execute(
+        select(ClassTeacher.id).where(
+            and_(
+                ClassTeacher.class_id == id,
+                ClassTeacher.teacher_id == target_user.id,
+            )
+        )
+    )
+    if existing_coteacher.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{target_user.name} is already a co-teacher of this class.",
+        )
+
+    # CRITICAL: A student in this class cannot be a teacher of this same class
+    enrolled_res = await session.execute(
+        select(ClassEnrollment.id).where(
+            and_(
+                ClassEnrollment.class_id == id,
+                ClassEnrollment.student_id == target_user.id,
+            )
+        )
+    )
+    if enrolled_res.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{target_user.name} is currently enrolled as a student in this class and cannot be invited as a teacher.",
+        )
+
+    # Check for active pending invitation
+    pending_res = await session.execute(
+        select(TeacherInvitation).where(
+            and_(
+                TeacherInvitation.class_id == id,
+                TeacherInvitation.invitee_id == target_user.id,
+                TeacherInvitation.status == InvitationStatus.pending,
+            )
+        )
+    )
+    if pending_res.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"An invitation has already been sent to {target_user.name} ({target_user.email}) and is pending.",
+        )
+
+    invitation = TeacherInvitation(
+        class_id=id,
+        inviter_id=current_user.id,
+        invitee_id=target_user.id,
+        status=InvitationStatus.pending,
+    )
+    session.add(invitation)
+    await session.commit()
+    await session.refresh(invitation)
+
+    # In-app notification for invitee
+    notif = UserNotification(
+        user_id=target_user.id,
+        type="teacher_invitation",
+        title="Co-Teacher Invitation",
+        message=f"{current_user.name} invited you to co-teach '{target_class.name}'.",
+        invitation_id=invitation.id,
+        class_id=id,
+    )
+    session.add(notif)
+    await session.commit()
+
+    # Send HTML notification email
+    try:
+        await send_teacher_invitation_email(
+            to_email=target_user.email,
+            inviter_name=current_user.name,
+            class_name=target_class.name,
+            dashboard_url="http://localhost:5173",
+        )
+    except Exception as email_err:
+        logger.warning("Failed to send teacher invitation email: %s", email_err)
+
+    return TeacherInvitationResponse(
+        id=invitation.id,
+        class_id=target_class.id,
+        class_name=target_class.name,
+        inviter_id=current_user.id,
+        inviter_name=current_user.name,
+        invitee_id=target_user.id,
+        invitee_email=target_user.email,
+        status=invitation.status.value,
+        created_at=invitation.created_at,
+        responded_at=invitation.responded_at,
+    )
+
+
+@app.post("/teachers/invitations/{id}/respond", tags=["Classes"])
+async def respond_to_teacher_invitation(
+    id: int,
+    payload: InvitationActionRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """
+    Invitee accepts or declines a teacher invitation.
+    """
+    invitation = await session.get(TeacherInvitation, id)
+    if not invitation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+    if invitation.invitee_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not the recipient of this invitation.",
+        )
+
+    if invitation.status != InvitationStatus.pending:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"This invitation has already been {invitation.status.value}.",
+        )
+
+    target_class = await session.get(Class, invitation.class_id)
+    class_name = target_class.name if target_class else "Class"
+
+    action = payload.action.strip().lower()
+
+    if action == "accept":
+        # Double check mutual exclusivity
+        enrolled = await session.execute(
+            select(ClassEnrollment.id).where(
+                and_(
+                    ClassEnrollment.class_id == invitation.class_id,
+                    ClassEnrollment.student_id == current_user.id,
+                )
+            )
+        )
+        if enrolled.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You are enrolled as a student in this class and cannot accept a teacher invitation.",
+            )
+
+        # Add to ClassTeacher
+        existing = await session.execute(
+            select(ClassTeacher.id).where(
+                and_(
+                    ClassTeacher.class_id == invitation.class_id,
+                    ClassTeacher.teacher_id == current_user.id,
+                )
+            )
+        )
+        if not existing.scalar_one_or_none():
+            co_teacher = ClassTeacher(
+                class_id=invitation.class_id,
+                teacher_id=current_user.id,
+            )
+            session.add(co_teacher)
+
+        invitation.status = InvitationStatus.accepted
+        invitation.responded_at = datetime.now()
+
+        # Update notification to read
+        await session.execute(
+            update(UserNotification)
+            .where(UserNotification.invitation_id == invitation.id)
+            .values(is_read=True)
+        )
+
+        # Send in-app notification to inviter
+        inviter_notif = UserNotification(
+            user_id=invitation.inviter_id,
+            type="general",
+            title="Invitation Accepted",
+            message=f"{current_user.name} accepted your invitation to co-teach '{class_name}'.",
+            class_id=invitation.class_id,
+        )
+        session.add(inviter_notif)
+        await session.commit()
+
+        return {
+            "message": f"You are now a co-teacher of '{class_name}'!",
+            "status": "accepted",
+            "class_id": invitation.class_id,
+        }
+
+    elif action == "decline":
+        invitation.status = InvitationStatus.declined
+        invitation.responded_at = datetime.now()
+
+        # Update notification to read
+        await session.execute(
+            update(UserNotification)
+            .where(UserNotification.invitation_id == invitation.id)
+            .values(is_read=True)
+        )
+        await session.commit()
+
+        return {
+            "message": f"Invitation to co-teach '{class_name}' declined.",
+            "status": "declined",
+            "class_id": invitation.class_id,
+        }
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid action '{payload.action}'. Expected 'accept' or 'decline'.",
+        )
+
+
+@app.delete("/classes/{class_id}/teachers/{teacher_id}", tags=["Classes"])
+async def remove_class_teacher(
+    class_id: int,
+    teacher_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """
+    Class creator removes a co-teacher from the class.
+    """
+    target_class = await session.get(Class, class_id)
+    if not target_class:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    if target_class.teacher_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the class creator can remove co-teachers.",
+        )
+
+    if teacher_id == target_class.teacher_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The class creator cannot be removed from the class.",
+        )
+
+    co_teacher_res = await session.execute(
+        select(ClassTeacher).where(
+            and_(
+                ClassTeacher.class_id == class_id,
+                ClassTeacher.teacher_id == teacher_id,
+            )
+        )
+    )
+    co_teacher = co_teacher_res.scalar_one_or_none()
+    if not co_teacher:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Teacher not found in this class.",
+        )
+
+    removed_teacher = await session.get(Student, teacher_id)
+    teacher_name = removed_teacher.name if removed_teacher else "Teacher"
+
+    await session.delete(co_teacher)
+    await session.commit()
+
+    return {"message": f"{teacher_name} has been removed as co-teacher."}
+
+
+@app.delete("/classes/{class_id}/students/{student_id}", tags=["Classes"])
+async def remove_class_student(
+    class_id: int,
+    student_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """
+    Class creator removes an enrolled student from the class.
+    """
+    target_class = await session.get(Class, class_id)
+    if not target_class:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    if target_class.teacher_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the class creator can remove students from this class.",
+        )
+
+    enrollment_res = await session.execute(
+        select(ClassEnrollment).where(
+            and_(
+                ClassEnrollment.class_id == class_id,
+                ClassEnrollment.student_id == student_id,
+            )
+        )
+    )
+    enrollment = enrollment_res.scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not enrolled in this class.",
+        )
+
+    student_obj = await session.get(Student, student_id)
+    student_name = student_obj.name if student_obj else "Student"
+
+    await session.delete(enrollment)
+    await session.commit()
+
+    return {"message": f"{student_name} has been removed from '{target_class.name}'."}
+
+
+# ── In-App Notifications Endpoints ────────────────────────────────────────────
+
+@app.get("/notifications", response_model=List[NotificationResponse], tags=["Notifications"])
+async def list_notifications(
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """
+    Lists real-time in-app notifications for the current authenticated user.
+    """
+    stmt = (
+        select(UserNotification)
+        .where(UserNotification.user_id == current_user.id)
+        .order_by(UserNotification.created_at.desc())
+        .limit(50)
+    )
+    res = await session.execute(stmt)
+    notifs = res.scalars().all()
+
+    items = []
+    for n in notifs:
+        invitation_status = None
+        if n.invitation_id:
+            inv = await session.get(TeacherInvitation, n.invitation_id)
+            if inv:
+                invitation_status = inv.status.value
+
+        class_name = None
+        if n.class_id:
+            cls = await session.get(Class, n.class_id)
+            if cls:
+                class_name = cls.name
+
+        items.append(
+            NotificationResponse(
+                id=n.id,
+                user_id=n.user_id,
+                type=n.type,
+                title=n.title,
+                message=n.message,
+                is_read=n.is_read,
+                invitation_id=n.invitation_id,
+                class_id=n.class_id,
+                invitation_status=invitation_status,
+                class_name=class_name,
+                created_at=n.created_at,
+            )
+        )
+    return items
+
+
+@app.patch("/notifications/{id}/read", tags=["Notifications"])
+async def mark_notification_read(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """Marks a single notification as read."""
+    notif = await session.get(UserNotification, id)
+    if not notif or notif.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+    notif.is_read = True
+    await session.commit()
+    return {"message": "Notification marked as read."}
+
+
+@app.post("/notifications/mark-all-read", tags=["Notifications"])
+async def mark_all_notifications_read(
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """Marks all notifications for current user as read."""
+    await session.execute(
+        update(UserNotification)
+        .where(UserNotification.user_id == current_user.id)
+        .values(is_read=True)
+    )
+    await session.commit()
+    return {"message": "All notifications marked as read."}
+
+
+@app.delete("/notifications/{id}", tags=["Notifications"])
+async def delete_notification(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """Deletes a notification."""
+    notif = await session.get(UserNotification, id)
+    if not notif or notif.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+    await session.delete(notif)
+    await session.commit()
+    return {"message": "Notification deleted."}
+
+
 # ── Assignments Endpoints ─────────────────────────────────────────────────────
+
 
 @app.get("/assignments", response_model=List[AssignmentResponse], tags=["Assignments"])
 async def list_assignments(
@@ -1197,11 +1797,10 @@ async def create_assignment(
     Accessible by course instructors and admins.
     """
     if payload.class_id:
-        target_class = await session.get(Class, payload.class_id)
-        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+        if not await is_user_teacher_or_admin(payload.class_id, current_user, session):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only the teacher who created this class can add assignments to it.",
+                detail="Only teachers of this class can add assignments to it.",
             )
     elif current_user.role != UserRole.admin:
         raise HTTPException(
@@ -1418,8 +2017,7 @@ async def publish_assignment_results(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
 
     if assignment.class_id:
-        target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+        if not await is_user_teacher_or_admin(assignment.class_id, current_user, session):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
     elif current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
@@ -1445,8 +2043,7 @@ async def unpublish_assignment_results(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
 
     if assignment.class_id:
-        target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+        if not await is_user_teacher_or_admin(assignment.class_id, current_user, session):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
     elif current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
@@ -1478,8 +2075,7 @@ async def get_assignment_grades_for_admin(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
 
     if assignment.class_id:
-        target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+        if not await is_user_teacher_or_admin(assignment.class_id, current_user, session):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
     elif current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
@@ -1601,8 +2197,7 @@ async def download_single_submission(
 
     assignment = await session.get(Assignment, submission.assignment_id)
     if assignment and assignment.class_id:
-        target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin and submission.student_id != current_user.id:
+        if not await is_user_teacher_or_admin(assignment.class_id, current_user, session) and submission.student_id != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
     elif current_user.role != UserRole.admin and submission.student_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
@@ -1647,8 +2242,7 @@ async def download_all_submissions_zip(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
 
     if assignment.class_id:
-        target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+        if not await is_user_teacher_or_admin(assignment.class_id, current_user, session):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
     elif current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
@@ -1723,8 +2317,7 @@ async def edit_grade_manually(
 
     assignment = await session.get(Assignment, sub.assignment_id)
     if assignment and assignment.class_id:
-        target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+        if not await is_user_teacher_or_admin(assignment.class_id, current_user, session):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
     elif current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
@@ -1802,8 +2395,7 @@ async def recheck_single_submission(
 
     # Verify teacher access
     if assignment.class_id:
-        target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+        if not await is_user_teacher_or_admin(assignment.class_id, current_user, session):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
     elif current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
@@ -1905,8 +2497,7 @@ async def trigger_grading_pipeline(
 
     # Verify teacher access
     if assignment.class_id:
-        target_class = await session.get(Class, assignment.class_id)
-        if target_class and target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+        if not await is_user_teacher_or_admin(assignment.class_id, current_user, session):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
     elif current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")

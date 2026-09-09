@@ -142,6 +142,7 @@ export default function App() {
         onNavigateView={handleNavigateView}
         onOpenProfile={() => setIsProfileModalOpen(true)}
         onRequestLogout={() => setIsLogoutModalOpen(true)}
+        onNotificationAction={(toastData) => setToast(toastData)}
       />
       <main style={{ flexGrow: 1 }}>
         {selectedClassId ? (

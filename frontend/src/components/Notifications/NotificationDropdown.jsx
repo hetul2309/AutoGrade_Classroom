@@ -1,12 +1,28 @@
 import React from 'react';
 import {
   Bell, CheckCircle2, FileCode2, Sparkles, MessageSquare,
-  AlertTriangle, Trash2, Check, X, ShieldAlert, BookOpen
+  AlertTriangle, Trash2, Check, X, ShieldAlert, BookOpen, UserPlus
 } from 'lucide-react';
 
 function getNotificationIcon(type) {
   const iconProps = { size: 16 };
   switch (type) {
+    case 'teacher_invitation':
+      return (
+        <div style={{
+          width: '32px',
+          height: '32px',
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, rgba(255, 106, 0, 0.2), rgba(255, 45, 141, 0.2))',
+          color: '#FF6A00',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0
+        }}>
+          <UserPlus {...iconProps} />
+        </div>
+      );
     case 'grade':
     case 'like':
       return (
@@ -100,7 +116,8 @@ export default function NotificationDropdown({
   onMarkAsRead,
   onMarkAllAsRead,
   onDeleteNotification,
-  onSelectNotification
+  onSelectNotification,
+  onRespondInvitation
 }) {
   return (
     <div
@@ -283,6 +300,80 @@ export default function NotificationDropdown({
                 >
                   {notif.message || notif.content}
                 </div>
+
+                {/* Co-teacher Invitation Interactive Actions */}
+                {Boolean(notif.invitationId || notif.invitation_id) && (
+                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {(notif.invitationStatus === 'accepted' || notif.invitation_status === 'accepted') ? (
+                      <span className="badge badge-graded" style={{ fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px' }}>
+                        <Check size={11} /> Accepted
+                      </span>
+                    ) : (notif.invitationStatus === 'declined' || notif.invitation_status === 'declined') ? (
+                      <span className="badge badge-pending" style={{ fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', opacity: 0.7 }}>
+                        <X size={11} /> Declined
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const invId = notif.invitationId || notif.invitation_id;
+                            if (onRespondInvitation) onRespondInvitation(invId, 'accept', notif);
+                          }}
+                          style={{
+                            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '4px 11px',
+                            fontSize: '0.76rem',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            boxShadow: '0 2px 6px rgba(16, 185, 129, 0.3)',
+                            transition: 'opacity 0.15s, transform 0.15s',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+                          onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                        >
+                          <Check size={12} />
+                          <span>Accept</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const invId = notif.invitationId || notif.invitation_id;
+                            if (onRespondInvitation) onRespondInvitation(invId, 'decline', notif);
+                          }}
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.12)',
+                            color: '#ef4444',
+                            border: '1px solid rgba(239, 68, 68, 0.25)',
+                            borderRadius: '6px',
+                            padding: '4px 11px',
+                            fontSize: '0.76rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'background 0.15s',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)')}
+                        >
+                          <X size={12} />
+                          <span>Decline</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <div
                   style={{

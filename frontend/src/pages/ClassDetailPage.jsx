@@ -4,12 +4,16 @@ import {
   Upload, Clock, CheckCircle2, AlertTriangle, Play, Sparkles,
   ChevronDown, ChevronUp, Edit3, Eye, FileText, Calendar, RefreshCw,
   RotateCw, RotateCcw, Save, X, HelpCircle, Send, EyeOff,
-  School, GraduationCap, Shield
+  School, GraduationCap, Shield, UserPlus, Trash2
 } from 'lucide-react';
 import {
   getClassDetailsApi,
   getClassAssignmentsApi,
   getClassStudentsApi,
+  getClassPeopleApi,
+  inviteClassTeacherApi,
+  removeClassTeacherApi,
+  removeClassStudentApi,
   getAdminAssignmentGradesApi,
   triggerGradingApi,
   recheckAllAssignmentApi,
@@ -42,6 +46,13 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
   const [classData, setClassData] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [students, setStudents] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState(null); // { type: 'student' | 'teacher', member }
+  const [removing, setRemoving] = useState(false);
   const [activeTab, setActiveTab] = useState('classwork'); // 'classwork' | 'evaluation' | 'people'
   const [loading, setLoading] = useState(true);
 
@@ -103,20 +114,22 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
   const [copiedCode, setCopiedCode] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const isTeacher = Boolean(classData ? (classData.teacher_id === user?.id || classData.is_teacher || user?.role === 'admin') : user?.role === 'admin');
+  const isOwner = Boolean(classData ? (classData.teacher_id === user?.id) : false);
+  const isTeacher = Boolean(classData ? (isOwner || classData.is_teacher || user?.role === 'admin' || teachers.some(t => t.id === user?.id)) : user?.role === 'admin');
 
   // 1. Load initial class data
   const loadClassInfo = async () => {
     try {
       setLoading(true);
-      const [cData, aList, sList] = await Promise.all([
+      const [cData, aList, peopleData] = await Promise.all([
         getClassDetailsApi(classId),
         getClassAssignmentsApi(classId),
-        getClassStudentsApi(classId),
+        getClassPeopleApi(classId),
       ]);
       setClassData(cData);
       setAssignments(aList);
-      setStudents(sList);
+      setTeachers(peopleData?.teachers || []);
+      setStudents(peopleData?.students || []);
       if (aList.length > 0) {
         setSelectedAssignmentId(aList[0].id);
       }
@@ -124,6 +137,60 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
       setToast({ message: err.message || 'Failed to load class info', type: 'error' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const reloadPeople = async () => {
+    try {
+      setPeopleLoading(true);
+      const peopleData = await getClassPeopleApi(classId);
+      setTeachers(peopleData?.teachers || []);
+      setStudents(peopleData?.students || []);
+    } catch (err) {
+      console.warn('Failed to refresh people list:', err);
+    } finally {
+      setPeopleLoading(false);
+    }
+  };
+
+  const handleSendInvite = async (e) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    try {
+      setInviting(true);
+      await inviteClassTeacherApi(classId, inviteEmail.trim());
+      setToast({
+        message: `Invitation successfully sent to ${inviteEmail}! They will see it in their notifications.`,
+        type: 'success',
+      });
+      setShowInviteModal(false);
+      setInviteEmail('');
+      reloadPeople();
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to send invitation', type: 'error' });
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!confirmRemoveMember) return;
+    const { type, member } = confirmRemoveMember;
+    try {
+      setRemoving(true);
+      if (type === 'teacher') {
+        await removeClassTeacherApi(classId, member.id);
+        setToast({ message: `Removed ${member.name} as co-teacher.`, type: 'success' });
+      } else {
+        await removeClassStudentApi(classId, member.id || member.student_id);
+        setToast({ message: `Removed ${member.name} from class.`, type: 'success' });
+      }
+      setConfirmRemoveMember(null);
+      reloadPeople();
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to remove member', type: 'error' });
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -1714,36 +1781,162 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
       {/* TAB 3: PEOPLE */}
       {activeTab === 'people' && (
         <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-          {/* Teachers / Instructors */}
-          <div style={{ marginBottom: '32px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--primary)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <School size={18} />
-              <span>Teachers & Instructors</span>
-            </h3>
-            <div className="glass-panel" style={{ padding: '16px 20px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'var(--primary-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', color: '#fff', fontSize: '1.05rem', boxShadow: 'var(--shadow-glow)' }}>
-                  {classData?.teacher_name ? classData.teacher_name.charAt(0).toUpperCase() : 'F'}
-                </div>
-                <div>
-                  <div style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-main)' }}>{classData?.teacher_name || 'Faculty Instructor'}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Course Creator & Lead Instructor</div>
-                </div>
+          {/* Teachers / Instructors Section */}
+          <div style={{ marginBottom: '36px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <School size={20} color="var(--primary)" />
+                <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
+                  Teachers & Instructors
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginLeft: '4px' }}>
+                  ({teachers.length || 1})
+                </span>
               </div>
 
-              <span className="badge badge-graded" style={{ padding: '4px 10px', fontSize: '0.78rem', fontWeight: '700' }}>
-                Instructor
-              </span>
+              {/* Creator only: Invite Teacher button */}
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={() => setShowInviteModal(true)}
+                  style={{
+                    background: 'linear-gradient(135deg, #FF6A00 0%, #FF2D8D 100%)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '7px 14px',
+                    fontSize: '0.82rem',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: 'var(--shadow-glow)',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.1)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.filter = 'brightness(1.0)')}
+                >
+                  <UserPlus size={15} />
+                  <span>Invite Teacher</span>
+                </button>
+              )}
+            </div>
+
+            {/* List of Teachers */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {(teachers.length > 0 ? teachers : [
+                {
+                  id: classData?.teacher_id,
+                  name: classData?.teacher_name || 'Lead Instructor',
+                  email: 'Primary Teacher',
+                  role: 'owner',
+                  is_owner: true,
+                }
+              ]).map((t) => (
+                <div
+                  key={t.id || t.email}
+                  className="glass-panel"
+                  style={{
+                    padding: '14px 20px',
+                    borderRadius: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    {t.avatar_url ? (
+                      <img
+                        src={t.avatar_url}
+                        alt={t.name}
+                        style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '50%',
+                          background: t.is_owner ? 'var(--primary-gradient)' : 'rgba(59, 130, 246, 0.2)',
+                          color: t.is_owner ? '#ffffff' : '#3b82f6',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: '700',
+                          fontSize: '1rem',
+                          boxShadow: t.is_owner ? 'var(--shadow-glow)' : 'none',
+                        }}
+                      >
+                        {t.name ? t.name.charAt(0).toUpperCase() : 'T'}
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ fontWeight: '700', fontSize: '0.98rem', color: 'var(--text-main)' }}>
+                        {t.name}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                        {t.email}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {t.is_owner ? (
+                      <span className="badge badge-graded" style={{ padding: '4px 10px', fontSize: '0.76rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Shield size={11} /> Primary Creator
+                      </span>
+                    ) : (
+                      <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '4px 10px', fontSize: '0.76rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <School size={11} /> Co-Teacher
+                      </span>
+                    )}
+
+                    {/* Creator can remove other co-teachers */}
+                    {isOwner && !t.is_owner && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmRemoveMember({ type: 'teacher', member: t })}
+                        title={`Remove ${t.name} as co-teacher`}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-dim)',
+                          cursor: 'pointer',
+                          padding: '6px',
+                          borderRadius: '6px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = '#ef4444';
+                          e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = 'var(--text-dim)';
+                          e.currentTarget.style.background = 'none';
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Students */}
+          {/* Students Section */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Users size={18} color="var(--primary)" />
-                <span>Classmates & Enrolled Students</span>
-              </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Users size={20} color="var(--primary)" />
+                <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
+                  Enrolled Students
+                </h3>
+              </div>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                 {students.length} {students.length === 1 ? 'student' : 'students'}
               </span>
@@ -1756,31 +1949,238 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {students.map((st) => (
-                  <div key={st.student_id} className="glass-panel" style={{ padding: '14px 20px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--border-subtle)' }}>
+                  <div
+                    key={st.id || st.student_id}
+                    className="glass-panel"
+                    style={{
+                      padding: '14px 20px',
+                      borderRadius: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(255, 106, 0, 0.12)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: '700' }}>
-                        {st.name ? st.name.charAt(0).toUpperCase() : 'S'}
-                      </div>
+                      {st.avatar_url ? (
+                        <img
+                          src={st.avatar_url}
+                          alt={st.name}
+                          style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '50%',
+                            background: 'rgba(255, 106, 0, 0.12)',
+                            color: 'var(--primary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.9rem',
+                            fontWeight: '700',
+                          }}
+                        >
+                          {st.name ? st.name.charAt(0).toUpperCase() : 'S'}
+                        </div>
+                      )}
                       <div>
-                        <div style={{ fontWeight: '600', fontSize: '0.92rem', color: 'var(--text-main)' }}>{st.name}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>{st.email}</div>
+                        <div style={{ fontWeight: '600', fontSize: '0.92rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span>{st.name}</span>
+                          {st.student_id_str && (
+                            <span style={{ fontSize: '0.74rem', color: 'var(--text-dim)', background: 'rgba(255, 255, 255, 0.05)', padding: '1px 6px', borderRadius: '4px' }}>
+                              ID: {st.student_id_str}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                          {st.email}
+                        </div>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <span className="badge" style={{ background: 'rgba(255, 106, 0, 0.12)', color: 'var(--primary)', border: '1px solid var(--border-subtle)', padding: '3px 9px', fontSize: '0.75rem', fontWeight: '700' }}>
                         Student
                       </span>
                       {st.enrolled_at && (
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                          Enrolled {new Date(st.enrolled_at).toLocaleDateString()}
+                          {new Date(st.enrolled_at).toLocaleDateString()}
                         </span>
+                      )}
+
+                      {/* Creator can remove enrolled students */}
+                      {isOwner && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRemoveMember({ type: 'student', member: st })}
+                          title={`Remove ${st.name} from class`}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-dim)',
+                            cursor: 'pointer',
+                            padding: '6px',
+                            borderRadius: '6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            transition: 'all 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.color = '#ef4444';
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.color = 'var(--text-dim)';
+                            e.currentTarget.style.background = 'none';
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Invite Teacher Modal */}
+      {showInviteModal && (
+        <div className="modal-overlay" style={{ zIndex: 1000 }}>
+          <div className="glass-panel" style={{ maxWidth: '460px', width: '90%', padding: '28px', borderRadius: '16px', animation: 'scaleUp 0.18s ease' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                <UserPlus size={18} color="var(--primary)" />
+                <span>Invite Co-Teacher</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => { setShowInviteModal(false); setInviteEmail(''); }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendInvite}>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.5', marginBottom: '16px' }}>
+                Enter the email address of the instructor you want to invite to collaborate on <strong style={{ color: 'var(--text-main)' }}>{classData?.name}</strong>.
+              </p>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  Teacher's Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="instructor@university.edu"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="form-control"
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', fontSize: '0.9rem' }}
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ background: 'rgba(255, 106, 0, 0.08)', border: '1px solid rgba(255, 106, 0, 0.2)', borderRadius: '8px', padding: '10px 14px', marginBottom: '22px', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                <strong style={{ color: 'var(--primary)' }}>Rule:</strong> An enrolled student in this class cannot be a teacher of this same class. The invited user will receive an in-app notification with Accept/Decline options, as well as an invitation email.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowInviteModal(false); setInviteEmail(''); }}
+                  disabled={inviting}
+                  style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '8px 16px', color: 'var(--text-main)', cursor: 'pointer', fontWeight: '600', fontSize: '0.84rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={inviting || !inviteEmail.trim()}
+                  style={{
+                    background: 'linear-gradient(135deg, #FF6A00 0%, #FF2D8D 100%)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 20px',
+                    fontWeight: '700',
+                    fontSize: '0.84rem',
+                    cursor: (inviting || !inviteEmail.trim()) ? 'not-allowed' : 'pointer',
+                    opacity: (inviting || !inviteEmail.trim()) ? 0.7 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: 'var(--shadow-glow)',
+                  }}
+                >
+                  {inviting ? 'Sending Invite...' : 'Send Invitation'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Removing Member */}
+      {confirmRemoveMember && (
+        <div className="modal-overlay" style={{ zIndex: 1000 }}>
+          <div className="glass-panel" style={{ maxWidth: '440px', width: '90%', padding: '28px', borderRadius: '16px', border: '1px solid rgba(239, 68, 68, 0.3)', animation: 'scaleUp 0.18s ease' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
+                  {confirmRemoveMember.type === 'teacher' ? 'Remove Co-Teacher?' : 'Remove Student?'}
+                </h3>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                  {classData?.name}
+                </div>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: '1.5', marginBottom: '22px' }}>
+              Are you sure you want to remove <strong style={{ color: 'var(--text-main)' }}>{confirmRemoveMember.member?.name}</strong> ({confirmRemoveMember.member?.email}) from this class?
+              {confirmRemoveMember.type === 'student'
+                ? ' They will immediately lose access to all assignments, submissions, and class materials.'
+                : ' They will lose all co-instructor privileges and will no longer be able to manage this class.'}
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setConfirmRemoveMember(null)}
+                disabled={removing}
+                style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '8px 16px', color: 'var(--text-main)', cursor: 'pointer', fontWeight: '600', fontSize: '0.84rem' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRemove}
+                disabled={removing}
+                style={{
+                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 20px',
+                  fontWeight: '700',
+                  fontSize: '0.84rem',
+                  cursor: removing ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 2px 8px rgba(239, 68, 68, 0.35)',
+                }}
+              >
+                {removing ? 'Removing...' : 'Yes, Remove'}
+              </button>
+            </div>
           </div>
         </div>
       )}
