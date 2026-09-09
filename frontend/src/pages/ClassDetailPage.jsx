@@ -4,7 +4,7 @@ import {
   Upload, Clock, CheckCircle2, AlertTriangle, Play, Sparkles,
   ChevronDown, ChevronUp, Edit3, Eye, FileText, Calendar, RefreshCw,
   RotateCw, RotateCcw, Save, X, HelpCircle, Send, EyeOff,
-  School, GraduationCap, Shield, UserPlus, Trash2
+  School, GraduationCap, Shield, UserPlus, Trash2, LogOut
 } from 'lucide-react';
 import {
   getClassDetailsApi,
@@ -14,6 +14,9 @@ import {
   inviteClassTeacherApi,
   removeClassTeacherApi,
   removeClassStudentApi,
+  unenrollFromClassApi,
+  leaveClassTeacherApi,
+  deleteClassApi,
   getAdminAssignmentGradesApi,
   triggerGradingApi,
   recheckAllAssignmentApi,
@@ -53,6 +56,8 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
   const [inviting, setInviting] = useState(false);
   const [confirmRemoveMember, setConfirmRemoveMember] = useState(null); // { type: 'student' | 'teacher', member }
   const [removing, setRemoving] = useState(false);
+  const [confirmActionModal, setConfirmActionModal] = useState(null); // { type: 'delete' | 'leave' | 'unenroll' }
+  const [actionProcessing, setActionProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState('classwork'); // 'classwork' | 'evaluation' | 'people'
   const [loading, setLoading] = useState(true);
 
@@ -114,7 +119,7 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
   const [copiedCode, setCopiedCode] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const isOwner = Boolean(classData ? (classData.teacher_id === user?.id) : false);
+  const isOwner = Boolean(classData ? (classData.teacher_id === user?.id || classData.is_creator) : false);
   const isTeacher = Boolean(classData ? (isOwner || classData.is_teacher || user?.role === 'admin' || teachers.some(t => t.id === user?.id)) : user?.role === 'admin');
 
   // 1. Load initial class data
@@ -191,6 +196,30 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
       setToast({ message: err.message || 'Failed to remove member', type: 'error' });
     } finally {
       setRemoving(false);
+    }
+  };
+
+  const handleConfirmClassAction = async () => {
+    if (!confirmActionModal) return;
+    try {
+      setActionProcessing(true);
+      if (confirmActionModal.type === 'delete') {
+        await deleteClassApi(classId);
+        window.dispatchEvent(new CustomEvent('classes-updated'));
+        onBack();
+      } else if (confirmActionModal.type === 'leave') {
+        await leaveClassTeacherApi(classId);
+        window.dispatchEvent(new CustomEvent('classes-updated'));
+        onBack();
+      } else if (confirmActionModal.type === 'unenroll') {
+        await unenrollFromClassApi(classId);
+        window.dispatchEvent(new CustomEvent('classes-updated'));
+        onBack();
+      }
+    } catch (err) {
+      setToast({ message: err.message || 'Action failed', type: 'error' });
+      setActionProcessing(false);
+      setConfirmActionModal(null);
     }
   };
 
@@ -642,35 +671,131 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
           </div>
         </div>
 
-        {/* Class Code Box */}
-        <div
-          style={{
-            background: 'rgba(0,0,0,0.3)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255,255,255,0.25)',
-            borderRadius: '12px',
-            padding: '14px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-          }}
-        >
-          <div>
-            <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '1px', opacity: 0.8 }}>
-              Class Code
-            </div>
-            <div style={{ fontSize: '1.4rem', fontWeight: '800', fontFamily: 'var(--font-mono)', letterSpacing: '2px' }}>
-              {classData.code}
-            </div>
-          </div>
-          <button
-            onClick={handleCopyCode}
-            className="btn-ghost"
-            style={{ color: '#fff', padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.15)' }}
-            title="Copy code"
+        {/* Right side banner controls: Class Code Box + Action Button (Delete / Leave / Unenroll) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          {/* Class Code Box */}
+          <div
+            style={{
+              background: 'rgba(0,0,0,0.3)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255,255,255,0.25)',
+              borderRadius: '12px',
+              padding: '14px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16px',
+            }}
           >
-            {copiedCode ? <Check size={18} color="#10b981" /> : <Copy size={18} />}
-          </button>
+            <div>
+              <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '1px', opacity: 0.8 }}>
+                Class Code
+              </div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', fontFamily: 'var(--font-mono)', letterSpacing: '2px' }}>
+                {classData.code}
+              </div>
+            </div>
+            <button
+              onClick={handleCopyCode}
+              className="btn-ghost"
+              style={{ color: '#fff', padding: '8px', borderRadius: '8px', background: 'rgba(255,255,255,0.15)' }}
+              title="Copy code"
+            >
+              {copiedCode ? <Check size={18} color="#10b981" /> : <Copy size={18} />}
+            </button>
+          </div>
+
+          {/* Action Button: Delete Class (creator) / Leave Class (co-teacher) / Unenroll (student) */}
+          {isOwner ? (
+            <button
+              type="button"
+              onClick={() => setConfirmActionModal({ type: 'delete' })}
+              title="Delete this entire class"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '14px 18px',
+                borderRadius: '12px',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                background: 'rgba(239, 68, 68, 0.25)',
+                color: '#fff',
+                fontWeight: '700',
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                backdropFilter: 'blur(10px)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.45)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)';
+              }}
+            >
+              <Trash2 size={17} />
+              <span>Delete Class</span>
+            </button>
+          ) : isTeacher ? (
+            <button
+              type="button"
+              onClick={() => setConfirmActionModal({ type: 'leave' })}
+              title="Leave this class as co-teacher"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '14px 18px',
+                borderRadius: '12px',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                background: 'rgba(245, 158, 11, 0.25)',
+                color: '#fff',
+                fontWeight: '700',
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                backdropFilter: 'blur(10px)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(245, 158, 11, 0.45)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(245, 158, 11, 0.25)';
+              }}
+            >
+              <LogOut size={17} />
+              <span>Leave Class</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmActionModal({ type: 'unenroll' })}
+              title="Unenroll from this class"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '14px 18px',
+                borderRadius: '12px',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                background: 'rgba(239, 68, 68, 0.25)',
+                color: '#fff',
+                fontWeight: '700',
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                backdropFilter: 'blur(10px)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.45)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)';
+              }}
+            >
+              <LogOut size={17} />
+              <span>Unenroll</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1893,6 +2018,38 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
                       </span>
                     )}
 
+                    {/* Co-teacher self leave button */}
+                    {t.id === user?.id && !t.is_owner && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmActionModal({ type: 'leave' })}
+                        title="Leave this class as co-teacher"
+                        style={{
+                          background: 'rgba(245, 158, 11, 0.1)',
+                          border: '1px solid rgba(245, 158, 11, 0.3)',
+                          color: '#f59e0b',
+                          cursor: 'pointer',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontSize: '0.76rem',
+                          fontWeight: '600',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(245, 158, 11, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(245, 158, 11, 0.1)';
+                        }}
+                      >
+                        <LogOut size={13} />
+                        <span>Leave Class</span>
+                      </button>
+                    )}
+
                     {/* Creator can remove other co-teachers */}
                     {isOwner && !t.is_owner && (
                       <button
@@ -2009,6 +2166,38 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
                           {new Date(st.enrolled_at).toLocaleDateString()}
                         </span>
+                      )}
+
+                      {/* Enrolled student self unenroll button */}
+                      {(st.id === user?.id || st.student_id === user?.id) && !isTeacher && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmActionModal({ type: 'unenroll' })}
+                          title="Unenroll from this class"
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '0.76rem',
+                            fontWeight: '600',
+                            transition: 'all 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                          }}
+                        >
+                          <LogOut size={13} />
+                          <span>Unenroll</span>
+                        </button>
                       )}
 
                       {/* Creator can remove enrolled students */}
@@ -2179,6 +2368,132 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
                 }}
               >
                 {removing ? 'Removing...' : 'Yes, Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Delete / Leave / Unenroll */}
+      {confirmActionModal && (
+        <div className="modal-overlay" style={{ zIndex: 1000 }}>
+          <div
+            className="glass-panel"
+            style={{
+              maxWidth: '460px',
+              width: '90%',
+              padding: '28px',
+              borderRadius: '16px',
+              border: confirmActionModal.type === 'delete' ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)',
+              animation: 'scaleUp 0.18s ease',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
+              <div
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '12px',
+                  background: confirmActionModal.type === 'delete' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                  color: confirmActionModal.type === 'delete' ? '#ef4444' : '#f59e0b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                {confirmActionModal.type === 'delete' ? <Trash2 size={22} /> : <LogOut size={22} />}
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>
+                  {confirmActionModal.type === 'delete'
+                    ? 'Delete Class?'
+                    : confirmActionModal.type === 'leave'
+                    ? 'Leave Class?'
+                    : 'Unenroll from Class?'}
+                </h3>
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>
+                  {classData?.name}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: '1.5', marginBottom: '24px' }}>
+              {confirmActionModal.type === 'delete' && (
+                <>
+                  Are you sure you want to permanently delete <strong style={{ color: 'var(--text-main)' }}>{classData?.name}</strong>?
+                  This will permanently remove all assignments, student notebook submissions, grades, and enrollments.
+                  <span style={{ display: 'block', marginTop: '8px', color: '#ef4444', fontWeight: '600' }}>
+                    This action cannot be undone.
+                  </span>
+                </>
+              )}
+              {confirmActionModal.type === 'leave' && (
+                <>
+                  Are you sure you want to leave <strong style={{ color: 'var(--text-main)' }}>{classData?.name}</strong> as a co-teacher?
+                  You will no longer be able to create assignments, view student submissions, or grade notebooks for this class.
+                </>
+              )}
+              {confirmActionModal.type === 'unenroll' && (
+                <>
+                  Are you sure you want to unenroll from <strong style={{ color: 'var(--text-main)' }}>{classData?.name}</strong>?
+                  You will be removed from the class roster. If you rejoin later, your past submissions and grades will still be preserved.
+                </>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setConfirmActionModal(null)}
+                disabled={actionProcessing}
+                style={{
+                  background: 'none',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '8px',
+                  padding: '9px 18px',
+                  color: 'var(--text-main)',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  fontSize: '0.86rem',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmClassAction}
+                disabled={actionProcessing}
+                style={{
+                  background: confirmActionModal.type === 'delete' ? '#ef4444' : '#f59e0b',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '9px 20px',
+                  fontWeight: '700',
+                  fontSize: '0.86rem',
+                  cursor: actionProcessing ? 'not-allowed' : 'pointer',
+                  opacity: actionProcessing ? 0.7 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: confirmActionModal.type === 'delete' ? '0 4px 14px rgba(239, 68, 68, 0.4)' : '0 4px 14px rgba(245, 158, 11, 0.4)',
+                }}
+              >
+                {actionProcessing ? (
+                  <span>Processing...</span>
+                ) : (
+                  <>
+                    {confirmActionModal.type === 'delete' ? <Trash2 size={16} /> : <LogOut size={16} />}
+                    <span>
+                      {confirmActionModal.type === 'delete'
+                        ? 'Delete Class'
+                        : confirmActionModal.type === 'leave'
+                        ? 'Leave Class'
+                        : 'Unenroll'}
+                    </span>
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -113,6 +113,7 @@ class ClassResponse(BaseModel):
     student_count: int = 0
     assignment_count: int = 0
     is_teacher: bool = False
+    is_creator: bool = False
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

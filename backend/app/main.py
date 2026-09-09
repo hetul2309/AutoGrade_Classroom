@@ -713,7 +713,8 @@ async def list_classes(
         )
         assignment_count = a_count_res.scalar() or 0
 
-        is_teacher = (c.teacher_id == current_user.id) or (c.id in co_taught_set)
+        is_creator = (c.teacher_id == current_user.id)
+        is_teacher = is_creator or (c.id in co_taught_set)
 
         class_responses.append(
             ClassResponse(
@@ -727,6 +728,7 @@ async def list_classes(
                 student_count=student_count,
                 assignment_count=assignment_count,
                 is_teacher=is_teacher,
+                is_creator=is_creator,
                 created_at=c.created_at,
             )
         )
@@ -772,6 +774,7 @@ async def create_class(
         student_count=0,
         assignment_count=0,
         is_teacher=True,
+        is_creator=True,
         created_at=new_class.created_at,
     )
 
@@ -852,6 +855,7 @@ async def join_class(
         student_count=student_count,
         assignment_count=assignment_count,
         is_teacher=False,
+        is_creator=False,
         created_at=target_class.created_at,
     )
 
@@ -918,7 +922,8 @@ async def get_class(
         )
     ).scalar() or 0
 
-    is_teacher = (target_class.teacher_id == current_user.id) or (
+    is_creator = (target_class.teacher_id == current_user.id)
+    is_teacher = is_creator or (
         await is_user_teacher_or_admin(id, current_user, session)
     )
 
@@ -933,6 +938,7 @@ async def get_class(
         student_count=s_count,
         assignment_count=a_count,
         is_teacher=is_teacher,
+        is_creator=is_creator,
         created_at=target_class.created_at,
     )
 
@@ -1647,6 +1653,137 @@ async def remove_class_student(
     await session.commit()
 
     return {"message": f"{student_name} has been removed from '{target_class.name}'."}
+
+
+@app.post("/classes/{class_id}/unenroll", tags=["Classes"])
+async def unenroll_from_class(
+    class_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """
+    Student voluntarily unenrolls from a class.
+    Preserves existing submissions/grades in the database should they re-enroll later.
+    """
+    target_class = await session.get(Class, class_id)
+    if not target_class:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    if target_class.teacher_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="As the class creator, you cannot unenroll. You can delete the class instead.",
+        )
+
+    co_teacher = (await session.execute(
+        select(ClassTeacher).where(
+            and_(ClassTeacher.class_id == class_id, ClassTeacher.teacher_id == current_user.id)
+        )
+    )).scalar_one_or_none()
+    if co_teacher:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You are a co-teacher of this class. Use 'Leave Class' instead of unenroll.",
+        )
+
+    enrollment = (await session.execute(
+        select(ClassEnrollment).where(
+            and_(ClassEnrollment.class_id == class_id, ClassEnrollment.student_id == current_user.id)
+        )
+    )).scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You are not enrolled in this class.",
+        )
+
+    await session.delete(enrollment)
+    await session.commit()
+
+    return {"message": f"Successfully unenrolled from '{target_class.name}'."}
+
+
+@app.post("/classes/{class_id}/teachers/leave", tags=["Classes"])
+async def leave_class_teacher(
+    class_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """
+    Co-teacher voluntarily leaves/unenrolls from a class.
+    Primary creators cannot leave; they must delete the class instead.
+    """
+    target_class = await session.get(Class, class_id)
+    if not target_class:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    if target_class.teacher_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="As the primary creator, you cannot leave the class. You can delete the class instead.",
+        )
+
+    co_teacher = (await session.execute(
+        select(ClassTeacher).where(
+            and_(ClassTeacher.class_id == class_id, ClassTeacher.teacher_id == current_user.id)
+        )
+    )).scalar_one_or_none()
+    if not co_teacher:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You are not a co-teacher of this class.",
+        )
+
+    await session.delete(co_teacher)
+    await session.commit()
+
+    return {"message": f"Successfully left '{target_class.name}'."}
+
+
+@app.delete("/classes/{class_id}", tags=["Classes"])
+async def delete_class(
+    class_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """
+    Class creator deletes the entire class.
+    Deletes all assignments, student submissions, grades, enrollments, and teacher invitations.
+    """
+    target_class = await session.get(Class, class_id)
+    if not target_class:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    if target_class.teacher_id != current_user.id and current_user.role != UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the class creator can delete this class.",
+        )
+
+    class_name = target_class.name
+
+    # 1. Delete associated notifications
+    await session.execute(
+        delete(UserNotification).where(UserNotification.class_id == class_id)
+    )
+
+    # 2. Delete teacher invitations
+    await session.execute(
+        delete(TeacherInvitation).where(TeacherInvitation.class_id == class_id)
+    )
+
+    # 3. Delete assignments (cascades submissions and grades)
+    assignments_res = await session.execute(
+        select(Assignment).where(Assignment.class_id == class_id)
+    )
+    for a in assignments_res.scalars().all():
+        await session.delete(a)
+
+    # 4. Delete the class (cascades class_enrollments and class_teachers)
+    await session.delete(target_class)
+    await session.commit()
+
+    return {"message": f"Class '{class_name}' and all associated assignments and materials have been deleted."}
 
 
 # ── In-App Notifications Endpoints ────────────────────────────────────────────

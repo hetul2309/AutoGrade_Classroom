@@ -419,6 +419,24 @@ export async function removeClassStudentApi(classId, studentId) {
   });
 }
 
+export async function unenrollFromClassApi(classId) {
+  return apiRequest(`/classes/${classId}/unenroll`, {
+    method: 'POST',
+  });
+}
+
+export async function leaveClassTeacherApi(classId) {
+  return apiRequest(`/classes/${classId}/teachers/leave`, {
+    method: 'POST',
+  });
+}
+
+export async function deleteClassApi(classId) {
+  return apiRequest(`/classes/${classId}`, {
+    method: 'DELETE',
+  });
+}
+
 // ── In-App Notifications APIs ──
 
 export async function getUserNotificationsApi() {
