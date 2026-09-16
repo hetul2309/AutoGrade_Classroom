@@ -25,6 +25,7 @@ import {
   unpublishAssignmentResultsApi,
   downloadSingleSubmissionApi,
   downloadAllSubmissionsZipApi,
+  downloadAssignmentAttachmentApi,
   updateAssignmentApi,
   uploadSubmissionApi,
   getMyGradesApi,
@@ -108,6 +109,7 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
   // Notebook download states
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [downloadingSubId, setDownloadingSubId] = useState(null);
+  const [downloadingAttachmentId, setDownloadingAttachmentId] = useState(null);
 
   // Modals & UI toggles
   const [showCreateAssignmentModal, setShowCreateAssignmentModal] = useState(false);
@@ -540,6 +542,18 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
     }
   };
 
+  const handleDownloadAttachment = async (ass) => {
+    setDownloadingAttachmentId(ass.id);
+    try {
+      await downloadAssignmentAttachmentApi(ass.id, ass.attachment_name || 'lab_handout.pdf');
+      setToast({ message: `Downloaded handout for ${ass.title}`, type: 'success' });
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to download attachment', type: 'error' });
+    } finally {
+      setDownloadingAttachmentId(null);
+    }
+  };
+
   // Stats for evaluation tab
   const evalStats = useMemo(() => {
     const total = evalGrades.length;
@@ -921,15 +935,20 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
                     {/* Action Row: Handout PDF + Rubric View + Teacher Edit */}
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
                       {ass.has_attachment && (
-                        <a
-                          href={getAssignmentAttachmentUrl(ass.id)}
-                          download={ass.attachment_name || 'lab_handout.pdf'}
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadAttachment(ass)}
+                          disabled={downloadingAttachmentId === ass.id}
                           className="btn-secondary"
-                          style={{ fontSize: '0.84rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                          style={{ fontSize: '0.84rem', display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
                         >
-                          <FileDown size={16} color="var(--accent-cyan)" />
-                          <span>Download Lab Handout ({ass.attachment_name})</span>
-                        </a>
+                          {downloadingAttachmentId === ass.id ? (
+                            <div className="animate-spin" style={{ width: '14px', height: '14px', border: '2px solid var(--accent-cyan)', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                          ) : (
+                            <FileDown size={16} color="var(--accent-cyan)" />
+                          )}
+                          <span>Download Lab Handout ({ass.attachment_name || 'PDF'})</span>
+                        </button>
                       )}
 
                       {isTeacher && ass.rubric_text && (

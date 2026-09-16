@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
 
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy import select
@@ -23,7 +23,7 @@ from app.models import Student, UserRole
 
 settings = get_settings()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 # ── Password Hashing ──────────────────────────────────────────────────────────
@@ -56,18 +56,22 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 # ── Dependencies ──────────────────────────────────────────────────────────────
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
+    token_header: Optional[str] = Depends(oauth2_scheme),
     session: AsyncSession = Depends(get_db),
 ) -> Student:
     """
-    Decodes the JWT bearer token, extracts user ID from the 'sub' claim,
-    and fetches the student/admin record from PostgreSQL.
+    Decodes the JWT bearer token (from Authorization header or ?token= query param),
+    extracts user ID from the 'sub' claim, and fetches the student/admin record from PostgreSQL.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    token = token_header or request.query_params.get("token")
+    if not token:
+        raise credentials_exception
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id_str: Optional[str] = payload.get("sub")

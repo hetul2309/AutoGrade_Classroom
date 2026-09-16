@@ -285,16 +285,31 @@ export async function unpublishAssignmentResultsApi(assignmentId) {
 export async function downloadSingleSubmissionApi(submissionId, filename = 'student_submission.ipynb') {
   const token = getAuthToken();
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
-  const res = await fetch(`/admin/submissions/${submissionId}/download`, { headers });
+  const res = await fetch(`${API_BASE}/admin/submissions/${submissionId}/download`, { headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Failed to download student notebook.');
   }
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('text/html')) {
+    throw new Error('Server returned an HTML page instead of a notebook file. Please check backend connection.');
+  }
+
+  // Parse filename from Content-Disposition header if available
+  const disposition = res.headers.get('content-disposition');
+  let finalFilename = filename;
+  if (disposition && disposition.includes('filename=')) {
+    const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (match && match[1]) {
+      finalFilename = match[1].replace(/['"]/g, '').trim();
+    }
+  }
+
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = finalFilename;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -304,16 +319,31 @@ export async function downloadSingleSubmissionApi(submissionId, filename = 'stud
 export async function downloadAllSubmissionsZipApi(assignmentId, zipName = 'all_submissions.zip') {
   const token = getAuthToken();
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
-  const res = await fetch(`/admin/assignments/${assignmentId}/download-all`, { headers });
+  const res = await fetch(`${API_BASE}/admin/assignments/${assignmentId}/download-all`, { headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Failed to download submissions zip.');
   }
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('text/html')) {
+    throw new Error('Server returned an HTML page instead of a ZIP file. Please check backend connection.');
+  }
+
+  // Parse filename from Content-Disposition header if available
+  const disposition = res.headers.get('content-disposition');
+  let finalZipName = zipName;
+  if (disposition && disposition.includes('filename=')) {
+    const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (match && match[1]) {
+      finalZipName = match[1].replace(/['"]/g, '').trim();
+    }
+  }
+
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = zipName;
+  a.download = finalZipName;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -462,6 +492,41 @@ export async function deleteNotificationApi(notificationId) {
 }
 
 export function getAssignmentAttachmentUrl(assignmentId) {
-  return `/assignments/${assignmentId}/attachment`;
+  const token = getAuthToken();
+  const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+  return `${API_BASE}/assignments/${assignmentId}/attachment${tokenParam}`;
+}
+
+export async function downloadAssignmentAttachmentApi(assignmentId, filename = 'attachment.pdf') {
+  const token = getAuthToken();
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const res = await fetch(`${API_BASE}/assignments/${assignmentId}/attachment`, { headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to download assignment attachment.');
+  }
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('text/html')) {
+    throw new Error('Server returned an HTML page instead of the attachment file. Please check backend connection.');
+  }
+
+  const disposition = res.headers.get('content-disposition');
+  let finalFilename = filename;
+  if (disposition && disposition.includes('filename=')) {
+    const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (match && match[1]) {
+      finalFilename = match[1].replace(/['"]/g, '').trim();
+    }
+  }
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = finalFilename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 }
 

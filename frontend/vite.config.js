@@ -13,6 +13,8 @@ export default defineConfig({
       '/students': 'http://localhost:8000',
       '/admin': 'http://localhost:8000',
       '/health': 'http://localhost:8000',
+      '/notifications': 'http://localhost:8000',
+      '/teachers': 'http://localhost:8000',
     },
   },
 });
