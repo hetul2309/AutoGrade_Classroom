@@ -551,7 +551,8 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
     // Required columns: Student ID, Email ID, Marks, AI Reason
     const headers = ['Student ID', 'Email ID', 'Marks', 'AI Reason'];
 
-    const rows = evalGrades.map((item) => {
+    const sortedGrades = [...evalGrades].sort((a, b) => (a.student_email || '').localeCompare(b.student_email || '', undefined, { sensitivity: 'base' }));
+    const rows = sortedGrades.map((item) => {
       // 1. Student ID: Roll number / university student ID (student_id_str, fallback to students list or student_id)
       const matchedStudent = students?.find((s) => s.id === item.student_id);
       const studentId = item.student_id_str || matchedStudent?.student_id_str || (item.student_id ? String(item.student_id) : '');
@@ -627,18 +628,21 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
   }, [evalGrades]);
 
   const filteredGrades = useMemo(() => {
-    return evalGrades.filter((g) => {
-      const matchesSearch =
-        g.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        g.student_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        String(g.student_id).includes(searchQuery);
-      let matchesStatus = true;
-      if (statusFilter === 'flagged') matchesStatus = g.flagged;
-      else if (statusFilter === 'pending') matchesStatus = g.submission_status === 'pending';
-      else if (statusFilter === 'graded') matchesStatus = g.marks !== null && g.submission_status !== 'no_submission';
-      else if (statusFilter === 'no_submission') matchesStatus = g.submission_status === 'no_submission';
-      return matchesSearch && matchesStatus;
-    });
+    return evalGrades
+      .filter((g) => {
+        const matchesSearch =
+          g.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          g.student_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          String(g.student_id).includes(searchQuery);
+        let matchesStatus = true;
+        if (statusFilter === 'flagged') matchesStatus = g.flagged;
+        else if (statusFilter === 'pending') matchesStatus = g.submission_status === 'pending';
+        else if (statusFilter === 'graded') matchesStatus = g.marks !== null && g.submission_status !== 'no_submission';
+        else if (statusFilter === 'no_submission') matchesStatus = g.submission_status === 'no_submission';
+        return matchesSearch && matchesStatus;
+      })
+      .slice()
+      .sort((a, b) => (a.student_email || '').localeCompare(b.student_email || '', undefined, { sensitivity: 'base' }));
   }, [evalGrades, searchQuery, statusFilter]);
 
   if (loading) {

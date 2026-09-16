@@ -2320,6 +2320,7 @@ async def get_assignment_grades_for_admin(
                 )
             )
 
+    items.sort(key=lambda x: (x.student_email or "").lower())
     return items
 
 
