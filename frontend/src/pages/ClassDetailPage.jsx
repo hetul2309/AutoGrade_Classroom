@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  ArrowLeft, BookOpen, Users, Cpu, Plus, Copy, Check, FileDown,
+  ArrowLeft, BookOpen, Users, Cpu, Plus, Copy, Check, FileDown, FileSpreadsheet,
   Upload, Clock, CheckCircle2, AlertTriangle, Play, Sparkles,
   ChevronDown, ChevronUp, Edit3, Eye, FileText, Calendar, RefreshCw,
   RotateCw, RotateCcw, Save, X, HelpCircle, Send, EyeOff,
@@ -540,6 +540,63 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
     } finally {
       setDownloadingZip(false);
     }
+  };
+
+  const handleExportGradesCsv = () => {
+    if (!evalGrades || evalGrades.length === 0 || evalStats.graded === 0) {
+      setToast({ message: 'No graded student records available to download.', type: 'warning' });
+      return;
+    }
+
+    // Required columns: Student ID, Email ID, Marks, AI Reason
+    const headers = ['Student ID', 'Email ID', 'Marks', 'AI Reason'];
+
+    const rows = evalGrades.map((item) => {
+      // 1. Student ID: Roll number / university student ID (student_id_str, fallback to students list or student_id)
+      const matchedStudent = students?.find((s) => s.id === item.student_id);
+      const studentId = item.student_id_str || matchedStudent?.student_id_str || (item.student_id ? String(item.student_id) : '');
+
+      // 2. Email ID
+      const emailId = item.student_email || matchedStudent?.email || '';
+
+      // 3. Marks: Numeric marks (or empty string if not graded)
+      const marks = item.marks !== null && item.marks !== undefined ? String(item.marks) : '';
+
+      // 4. AI Reason: Reasoning text / similarity flag reason
+      let aiReason = item.reasoning_text || '';
+      if (item.flagged && item.flag_reason) {
+        aiReason = aiReason ? `[Flagged: ${item.flag_reason}] ${aiReason}` : `[Flagged: ${item.flag_reason}]`;
+      }
+
+      return [studentId, emailId, marks, aiReason];
+    });
+
+    // RFC 4180 CSV escaping
+    const escapeCsv = (val) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/\r\n/g, ' ').replace(/[\r\n]+/g, ' ').trim();
+      return `"${str.replace(/"/g, '""')}"`;
+    };
+
+    const csvContent = [
+      headers.map(escapeCsv).join(','),
+      ...rows.map((row) => row.map(escapeCsv).join(','))
+    ].join('\r\n');
+
+    // Prepend UTF-8 BOM so Microsoft Excel opens it directly with correct encoding
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const assignmentTitle = (currentAssignment?.title || 'Assignment').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const classCode = classData?.class_code || 'Class';
+    link.setAttribute('download', `${assignmentTitle}_Grades_${classCode}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setToast({ message: '📊 Excel CSV grade sheet downloaded successfully!', type: 'success' });
   };
 
   const handleDownloadAttachment = async (ass) => {
@@ -1360,6 +1417,39 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
                       <span>Download All (.zip)</span>
                     </>
                   )}
+                </button>
+              )}
+
+              {/* Download Excel/CSV Grades Button (Active once students are graded at least 1 time) */}
+              {currentAssignment && (
+                <button
+                  id="download-excel-grades-btn"
+                  onClick={handleExportGradesCsv}
+                  disabled={evalStats.graded === 0}
+                  className="btn-secondary"
+                  style={{
+                    padding: '9px 18px',
+                    fontSize: '0.88rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    borderColor: evalStats.graded > 0 ? 'rgba(16, 185, 129, 0.5)' : 'rgba(255, 255, 255, 0.12)',
+                    background: evalStats.graded > 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+                    color: evalStats.graded > 0 ? '#10b981' : 'var(--text-dim)',
+                    fontWeight: '600',
+                    cursor: evalStats.graded > 0 ? 'pointer' : 'not-allowed',
+                    opacity: evalStats.graded > 0 ? 1 : 0.6,
+                    transition: 'all 0.2s ease',
+                    boxShadow: evalStats.graded > 0 ? '0 0 14px rgba(16, 185, 129, 0.15)' : 'none'
+                  }}
+                  title={
+                    evalStats.graded > 0
+                      ? 'Download student grades and AI reasoning in Excel CSV format'
+                      : 'Download Excel is available after students are graded at least 1 time'
+                  }
+                >
+                  <FileSpreadsheet size={16} />
+                  <span>Download Excel (CSV)</span>
                 </button>
               )}
 

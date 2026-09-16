@@ -278,6 +278,7 @@ class AdminGradeItem(BaseModel):
     grade_id: Optional[int] = None
     submission_id: Optional[int] = None
     student_id: int
+    student_id_str: Optional[str] = None
     student_name: str
     student_email: str
     assignment_id: int
