@@ -206,7 +206,7 @@ async def send_otp(payload: SendOtpRequest, session: AsyncSession = Depends(get_
         logger.error("Failed to send OTP email to %s: %s", clean_email, err_msg)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unable to send verification email: {err_msg or 'SMTP dispatch failed'}. Please verify SMTP settings.",
+            detail=f"Unable to send verification email: {err_msg or 'Email dispatch failed'}",
         )
 
     return {

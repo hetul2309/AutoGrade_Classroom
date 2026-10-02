@@ -149,44 +149,56 @@ def _send_http_api_email_sync(to_email: str, subject: str, html_body: str, text_
 
     # 1. Try Brevo first if configured (Brevo allows sending to ANY recipient email)
     if brevo_key:
-        try:
-            admin_email, _, _, _, _ = get_smtp_credentials()
-            sender_email = (getattr(cfg, "BREVO_SENDER_EMAIL", "") or os.getenv("BREVO_SENDER_EMAIL", "") or admin_email or "autogradeclassroom@gmail.com").strip()
-            payload = json.dumps({
-                "sender": {"name": "AutoGrade Classroom", "email": sender_email},
-                "to": [{"email": to_email}],
-                "subject": subject,
-                "htmlContent": html_body,
-                "textContent": text_body,
-            }).encode("utf-8")
-            req = urllib.request.Request(
-                "https://api.brevo.com/v3/smtp/email",
-                data=payload,
-                headers={
-                    "api-key": brevo_key,
-                    "Content-Type": "application/json",
-                    "User-Agent": "AutoGrade-Classroom/1.0",
-                },
-                method="POST"
+        if brevo_key.startswith("xsmtpsib-"):
+            brevo_err = (
+                "Brevo Configuration Error: The key you provided starts with 'xsmtpsib-', which is an SMTP key (for smtp-relay.brevo.com). "
+                "Because Render blocks SMTP ports, you must use a Brevo API key instead. "
+                "In Brevo, go to 'SMTP & API' -> click the 'API Keys' tab (first tab, not the SMTP tab) -> click 'Generate a new API key'. "
+                "The API key starts with 'xkeysib-'."
             )
-            with urllib.request.urlopen(req, timeout=12) as resp:
-                if resp.status in (200, 201):
-                    print(f"[AutoGrade HTTP EMAIL SUCCESS] Email delivered to {to_email} via Brevo API (HTTPS port 443)!")
-                    logger.info("Email delivered via Brevo HTTP API to %s", to_email)
-                    return True, None
-                body = resp.read().decode("utf-8")
-                brevo_err = f"Brevo API status {resp.status}: {body}"
-        except urllib.error.HTTPError as he:
-            err_body = he.read().decode("utf-8", errors="replace")
-            print(f"[AutoGrade Brevo API Error] Status {he.code}: {err_body}")
-            brevo_err = f"Brevo API Error ({he.code}): {err_body}"
-        except Exception as exc:
-            print(f"[AutoGrade Brevo API Exception] {exc}")
-            brevo_err = f"Brevo exception: {exc}"
+            print(f"[AutoGrade Brevo Error] {brevo_err}")
+            logger.error(brevo_err)
+            if not resend_key:
+                return False, brevo_err
+        else:
+            try:
+                admin_email, _, _, _, _ = get_smtp_credentials()
+                sender_email = (getattr(cfg, "BREVO_SENDER_EMAIL", "") or os.getenv("BREVO_SENDER_EMAIL", "") or admin_email or "autogradeclassroom@gmail.com").strip()
+                payload = json.dumps({
+                    "sender": {"name": "AutoGrade Classroom", "email": sender_email},
+                    "to": [{"email": to_email}],
+                    "subject": subject,
+                    "htmlContent": html_body,
+                    "textContent": text_body,
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    "https://api.brevo.com/v3/smtp/email",
+                    data=payload,
+                    headers={
+                        "api-key": brevo_key,
+                        "Content-Type": "application/json",
+                        "User-Agent": "AutoGrade-Classroom/1.0",
+                    },
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    if resp.status in (200, 201):
+                        print(f"[AutoGrade HTTP EMAIL SUCCESS] Email delivered to {to_email} via Brevo API (HTTPS port 443)!")
+                        logger.info("Email delivered via Brevo HTTP API to %s", to_email)
+                        return True, None
+                    body = resp.read().decode("utf-8")
+                    brevo_err = f"Brevo API status {resp.status}: {body}"
+            except urllib.error.HTTPError as he:
+                err_body = he.read().decode("utf-8", errors="replace")
+                print(f"[AutoGrade Brevo API Error] Status {he.code}: {err_body}")
+                brevo_err = f"Brevo API Error ({he.code}): {err_body}"
+            except Exception as exc:
+                print(f"[AutoGrade Brevo API Exception] {exc}")
+                brevo_err = f"Brevo exception: {exc}"
 
-        if not resend_key:
-            return False, brevo_err
-        print(f"[AutoGrade Notice] Brevo failed ({brevo_err}), attempting Resend fallback...")
+            if not resend_key:
+                return False, brevo_err
+            print(f"[AutoGrade Notice] Brevo failed ({brevo_err}), attempting Resend fallback...")
 
     # 2. Try Resend if configured
     if resend_key:
@@ -242,17 +254,19 @@ def _send_smtp_email_sync(to_email: str, subject: str, html_body: str, text_body
     resend_key = (getattr(cfg, "RESEND_API_KEY", "") or os.getenv("RESEND_API_KEY", "")).strip()
     brevo_key = (getattr(cfg, "BREVO_API_KEY", "") or os.getenv("BREVO_API_KEY", "")).strip()
 
+    http_error_msg = None
     # Prioritize HTTP API on cloud environments if an API key is provided
     if resend_key or brevo_key:
         http_ok, http_err = _send_http_api_email_sync(to_email, subject, html_body, text_body)
         if http_ok:
             return True, None
+        http_error_msg = http_err
         logger.warning("HTTP Email API failed, attempting SMTP fallback: %s", http_err)
 
     admin_email, admin_pass, smtp_host, configured_port, from_addr = get_smtp_credentials()
 
     if not admin_email or not admin_pass:
-        err_msg = f"SMTP credentials not fully configured (email='{admin_email}', pass_set={bool(admin_pass)})"
+        err_msg = http_error_msg or f"SMTP credentials not fully configured (email='{admin_email}', pass_set={bool(admin_pass)})"
         print(f"[AutoGrade SMTP Warning] {err_msg}. Email dispatch skipped.")
         logger.warning(err_msg)
         return False, err_msg
@@ -294,8 +308,10 @@ def _send_smtp_email_sync(to_email: str, subject: str, html_body: str, text_body
             print(f"[AutoGrade SMTP Port {port} Attempt Failed] Reason: {exc}")
 
     last_err = " | ".join(errors)
+    if http_error_msg:
+        last_err = f"{http_error_msg} | Fallback SMTP: {last_err}"
     print(f"[AutoGrade SMTP FAILED] Could not send email to {to_email}. Error: {last_err}")
-    logger.error("Failed to send email to %s via SMTP: %s", to_email, str(last_err))
+    logger.error("Failed to send email to %s: %s", to_email, str(last_err))
     return False, last_err
 
 
