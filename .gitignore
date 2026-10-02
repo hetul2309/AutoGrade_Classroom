@@ -41,3 +41,6 @@ postgres_data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local reference folders (do not commit)
+Lekhak_Reference/

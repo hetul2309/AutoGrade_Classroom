@@ -21,10 +21,19 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
-    # Admin Credentials
+    # Admin & Email / SMTP Settings (Supports both AutoGrade and Lekhak/Nodemailer conventions)
     ADMIN_EMAIL: str = ""
     ADMIN_PASS: str = ""
     ADMIN_PASSWORD: str = ""
+    EMAIL_USER: str = ""
+    EMAIL_PASS: str = ""
+    SMTP_USER: str = ""
+    SMTP_PASS: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    MAIL_FROM: str = ""
+    FROM_EMAIL: str = ""
 
     # Cloudinary Storage
     CLOUDINARY_CLOUD_NAME: str = ""

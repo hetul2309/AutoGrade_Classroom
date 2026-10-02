@@ -73,66 +73,119 @@ def verify_stored_otp(email: str, purpose: str, otp: str, consume: bool = True) 
     return True
 
 
-def _send_smtp_email_sync(to_email: str, subject: str, html_body: str, text_body: str) -> bool:
-    """Sends an email synchronously using smtplib with dual port retry (587 STARTTLS & 465 SSL)."""
-    admin_email = (
-        settings.ADMIN_EMAIL
-        or os.getenv("ADMIN_EMAIL", "")
+def get_smtp_credentials() -> Tuple[str, str, str, int, str]:
+    """
+    Extracts SMTP credentials with full compatibility for:
+    - AutoGrade standard: ADMIN_EMAIL, ADMIN_PASS
+    - Lekhak / Nodemailer standard: EMAIL_USER, EMAIL_PASS, SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT, MAIL_FROM
+    """
+    cfg = get_settings()
+
+    email = (
+        getattr(cfg, "EMAIL_USER", "")
+        or getattr(cfg, "SMTP_USER", "")
+        or getattr(cfg, "ADMIN_EMAIL", "")
+        or os.getenv("EMAIL_USER", "")
         or os.getenv("SMTP_USER", "")
-    ).strip()
-    admin_pass = (
-        settings.ADMIN_PASS
-        or os.getenv("ADMIN_PASS", "")
-        or os.getenv("SMTP_PASSWORD", "")
-        or settings.ADMIN_PASSWORD
-        or os.getenv("ADMIN_PASSWORD", "")
+        or os.getenv("ADMIN_EMAIL", "")
     ).strip()
 
+    # Prioritize dedicated app password fields over generic dashboard password
+    password = (
+        getattr(cfg, "EMAIL_PASS", "")
+        or getattr(cfg, "SMTP_PASS", "")
+        or getattr(cfg, "ADMIN_PASS", "")
+        or getattr(cfg, "SMTP_PASSWORD", "")
+        or os.getenv("EMAIL_PASS", "")
+        or os.getenv("SMTP_PASS", "")
+        or os.getenv("ADMIN_PASS", "")
+        or os.getenv("SMTP_PASSWORD", "")
+    ).strip()
+
+    # Remove internal spaces in Google App Passwords (e.g. "abcd efgh ijkl mnop")
+    if password:
+        password = password.replace(" ", "")
+
+    host = (
+        getattr(cfg, "SMTP_HOST", "")
+        or os.getenv("SMTP_HOST", "")
+        or "smtp.gmail.com"
+    ).strip()
+
+    port = 587
+    raw_port = getattr(cfg, "SMTP_PORT", None) or os.getenv("SMTP_PORT")
+    if raw_port:
+        try:
+            port = int(raw_port)
+        except ValueError:
+            port = 587
+
+    from_addr = (
+        getattr(cfg, "MAIL_FROM", "")
+        or getattr(cfg, "FROM_EMAIL", "")
+        or os.getenv("MAIL_FROM", "")
+        or os.getenv("FROM_EMAIL", "")
+        or (f"AutoGrade Classroom <{email}>" if email else "AutoGrade Classroom")
+    ).strip()
+    if email and "<" not in from_addr:
+        from_addr = f"AutoGrade Classroom <{from_addr}>"
+
+    return email, password, host, port, from_addr
+
+
+def _send_smtp_email_sync(to_email: str, subject: str, html_body: str, text_body: str) -> Tuple[bool, Optional[str]]:
+    """Sends an email synchronously using smtplib with dual port retry (configured port & fallback)."""
+    admin_email, admin_pass, smtp_host, configured_port, from_addr = get_smtp_credentials()
+
     if not admin_email or not admin_pass:
-        print(f"[AutoGrade SMTP Warning] ADMIN_EMAIL or ADMIN_PASS is missing! (email='{admin_email}', pass_set={bool(admin_pass)})")
-        logger.warning(
-            "SMTP credentials not fully configured (ADMIN_EMAIL/ADMIN_PASS). Email dispatch skipped."
-        )
-        return False
+        err_msg = f"SMTP credentials not fully configured (email='{admin_email}', pass_set={bool(admin_pass)})"
+        print(f"[AutoGrade SMTP Warning] {err_msg}. Email dispatch skipped.")
+        logger.warning(err_msg)
+        return False, err_msg
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"AutoGrade Classroom <{admin_email}>"
+    msg["From"] = from_addr
     msg["To"] = to_email
 
     msg.attach(MIMEText(text_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    ports_to_try = [587, 465]
-    last_err = None
+    # Try configured port first, then alternative (587 STARTTLS / 465 SSL)
+    if configured_port == 465:
+        ports_to_try = [465, 587]
+    else:
+        ports_to_try = [587, 465]
+
+    errors = []
 
     for port in ports_to_try:
         try:
             context = ssl.create_default_context()
             if port == 465:
-                with smtplib.SMTP_SSL(smtp_host, port, context=context, timeout=10) as server:
+                with smtplib.SMTP_SSL(smtp_host, port, context=context, timeout=12) as server:
                     server.login(admin_email, admin_pass)
                     server.sendmail(admin_email, to_email, msg.as_string())
             else:
-                with smtplib.SMTP(smtp_host, port, timeout=10) as server:
+                with smtplib.SMTP(smtp_host, port, timeout=12) as server:
                     server.starttls(context=context)
                     server.login(admin_email, admin_pass)
                     server.sendmail(admin_email, to_email, msg.as_string())
 
             print(f"[AutoGrade SMTP SUCCESS] Verification email sent to {to_email} via {smtp_host}:{port}!")
             logger.info("Successfully sent OTP email to %s via %s:%d", to_email, smtp_host, port)
-            return True
+            return True, None
         except Exception as exc:
-            last_err = exc
+            errors.append(f"Port {port}: {exc}")
             print(f"[AutoGrade SMTP Port {port} Attempt Failed] Reason: {exc}")
 
+    last_err = " | ".join(errors)
     print(f"[AutoGrade SMTP FAILED] Could not send email to {to_email}. Error: {last_err}")
     logger.error("Failed to send email to %s via SMTP: %s", to_email, str(last_err))
-    return False
+    return False, last_err
 
 
-async def send_otp_email(to_email: str, otp: str, purpose: str = "signup") -> Tuple[bool, str]:
+async def send_otp_email(to_email: str, otp: str, purpose: str = "signup") -> Tuple[bool, Optional[str], str]:
     """
     Generates and dispatches an OTP email to the user.
     Always stores the OTP in memory and logs it to the console for development reliability.
@@ -195,8 +248,8 @@ Verification Code: {otp}
 This code is valid for 10 minutes. If you did not request this, please ignore this message.
 """
 
-    sent = await asyncio.to_thread(_send_smtp_email_sync, to_email, subject, html_content, text_content)
-    return (sent, otp)
+    sent, last_err = await asyncio.to_thread(_send_smtp_email_sync, to_email, subject, html_content, text_content)
+    return (sent, last_err, otp)
 
 
 async def send_teacher_invitation_email(
@@ -279,5 +332,6 @@ To respond:
 Sent from AutoGrade Classroom
 """
 
-    return await asyncio.to_thread(_send_smtp_email_sync, to_email, subject, html_content, text_content)
+    sent, _ = await asyncio.to_thread(_send_smtp_email_sync, to_email, subject, html_content, text_content)
+    return sent
 
