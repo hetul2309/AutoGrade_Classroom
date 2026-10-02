@@ -82,6 +82,7 @@ from app.schemas import (
     AdminGradeItem,
     AdminStatsResponse,
     AdminSubmissionItem,
+    AdminUpdateUserRequest,
     AdminUserItem,
     AssignmentCreateRequest,
     AssignmentResponse,
@@ -306,9 +307,23 @@ async def update_profile(
     Updates the authenticated user's profile details (first name, last name, student ID, avatar).
     """
     if payload.first_name is not None:
-        current_user.first_name = payload.first_name.strip()
+        fn = payload.first_name.strip()
+        if fn and fn[0].isdigit():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="First name cannot start with a number.",
+            )
+        current_user.first_name = fn
+
     if payload.last_name is not None:
-        current_user.last_name = payload.last_name.strip()
+        ln = payload.last_name.strip()
+        if ln and ln[0].isdigit():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Last name cannot start with a number.",
+            )
+        current_user.last_name = ln
+
     if payload.student_id_str is not None:
         current_user.student_id_str = payload.student_id_str.strip()
     if payload.avatar_url is not None:
@@ -567,6 +582,22 @@ async def google_auth(
     picture = id_info.get("picture", None)
     is_admin = is_admin_email(email)
 
+    # Detect student ID from email (e.g. 202401045@...) or numeric identifier
+    email_user = email.split("@")[0] if "@" in email else ""
+    detected_student_id = ""
+    if email_user.isdigit():
+        detected_student_id = email_user
+    elif first_name.isdigit():
+        detected_student_id = first_name
+
+    # If first_name starts with a number, do not use it as the name
+    if first_name and first_name[0].isdigit():
+        first_name = ""
+    if last_name and last_name[0].isdigit():
+        last_name = ""
+    if name and name[0].isdigit():
+        name = ""
+
     # Check if user already exists
     stmt = select(Student).where(func.lower(Student.email) == email)
     user = (await session.execute(stmt)).scalar_one_or_none()
@@ -577,7 +608,7 @@ async def google_auth(
             name=name,
             first_name=first_name,
             last_name=last_name,
-            student_id_str="ADMIN" if is_admin else "",
+            student_id_str="ADMIN" if is_admin else detected_student_id,
             email=email,
             hashed_password=hash_password(random_pw),
             role=UserRole.admin if is_admin else UserRole.student,
@@ -2800,6 +2831,84 @@ async def get_admin_users(
         )
 
     return user_items
+
+
+@app.put("/admin/users/{user_id}", response_model=AdminUserItem, tags=["Admin Portal"])
+async def admin_update_user(
+    user_id: int,
+    payload: AdminUpdateUserRequest,
+    session: AsyncSession = Depends(get_db),
+    admin_user: Student = Depends(require_admin),
+):
+    """
+    Allows an administrator to edit a user's first name, last name, and student ID / roll number.
+    Automatically updates the user's full name.
+    """
+    target_user = await session.get(Student, user_id)
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if payload.first_name is not None:
+        fn = payload.first_name.strip()
+        if fn and fn[0].isdigit():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="First name cannot start with a number.",
+            )
+        target_user.first_name = fn
+
+    if payload.last_name is not None:
+        ln = payload.last_name.strip()
+        if ln and ln[0].isdigit():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Last name cannot start with a number.",
+            )
+        target_user.last_name = ln
+
+    if payload.student_id_str is not None:
+        target_user.student_id_str = payload.student_id_str.strip()
+
+    full_name = f"{target_user.first_name or ''} {target_user.last_name or ''}".strip()
+    if full_name:
+        target_user.name = full_name
+
+    await session.commit()
+    await session.refresh(target_user)
+
+    enrolled_res = await session.execute(
+        select(func.count(ClassEnrollment.id)).where(ClassEnrollment.student_id == target_user.id)
+    )
+    enrolled_count = enrolled_res.scalar() or 0
+
+    teaching_res = await session.execute(
+        select(func.count(Class.id)).where(Class.teacher_id == target_user.id)
+    )
+    teaching_count = teaching_res.scalar() or 0
+
+    subs_res = await session.execute(
+        select(func.count(Submission.id)).where(Submission.student_id == target_user.id)
+    )
+    subs_count = subs_res.scalar() or 0
+
+    logger.info("Admin %s updated user #%d (%s)", admin_user.email, target_user.id, target_user.name)
+
+    return AdminUserItem(
+        id=target_user.id,
+        name=target_user.name,
+        first_name=target_user.first_name,
+        last_name=target_user.last_name,
+        email=target_user.email,
+        student_id_str=target_user.student_id_str,
+        role="admin" if target_user.role == UserRole.admin else "user",
+        created_at=target_user.created_at,
+        enrolled_classes_count=enrolled_count,
+        teaching_classes_count=teaching_count,
+        submissions_count=subs_count,
+    )
 
 
 @app.delete("/admin/users/{user_id}", tags=["Admin Portal"])

@@ -1,20 +1,82 @@
 import React, { useState } from 'react';
 import { User, IdCard, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 import { updateProfileApi } from '../api';
+import Toast from './Toast';
 
 export default function CompleteProfileModal({ isOpen, currentUser, onComplete }) {
   if (!isOpen) return null;
 
-  const [firstName, setFirstName] = useState(currentUser?.first_name || currentUser?.name?.split(' ')[0] || '');
-  const [lastName, setLastName] = useState(currentUser?.last_name || currentUser?.name?.split(' ').slice(1).join(' ') || '');
-  const [studentId, setStudentId] = useState(currentUser?.student_id_str || '');
+  // Helper: do not pre-fill names if they start with a number (e.g. student email 202401045@...)
+  const sanitizeInitialName = (val) => {
+    if (!val) return '';
+    const clean = String(val).trim();
+    return /^\d/.test(clean) ? '' : clean;
+  };
+
+  const getInitialStudentId = () => {
+    if (currentUser?.student_id_str && currentUser.student_id_str !== 'ADMIN') {
+      return currentUser.student_id_str;
+    }
+    const emailPrefix = currentUser?.email ? currentUser.email.split('@')[0] : '';
+    if (/^\d+$/.test(emailPrefix)) {
+      return emailPrefix;
+    }
+    const rawName = currentUser?.name || currentUser?.first_name || '';
+    const digitsMatch = String(rawName).match(/^\d+/);
+    if (digitsMatch) {
+      return digitsMatch[0];
+    }
+    return '';
+  };
+
+  const rawFirst = currentUser?.first_name || currentUser?.name?.split(' ')[0] || '';
+  const rawLast = currentUser?.last_name || currentUser?.name?.split(' ').slice(1).join(' ') || '';
+
+  const [firstName, setFirstName] = useState(sanitizeInitialName(rawFirst));
+  const [lastName, setLastName] = useState(sanitizeInitialName(rawLast));
+  const [studentId, setStudentId] = useState(getInitialStudentId());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [toast, setToast] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!studentId.trim()) {
-      setError('Please enter your Student ID number.');
+    const cleanFirst = firstName.trim();
+    const cleanLast = lastName.trim();
+    const cleanSid = studentId.trim();
+
+    if (!cleanFirst) {
+      const msg = 'Please enter your first name.';
+      setError(msg);
+      setToast({ message: msg, type: 'error' });
+      return;
+    }
+
+    if (/^\d/.test(cleanFirst)) {
+      const msg = 'First name cannot start with a number. Please enter a valid name.';
+      setError(msg);
+      setToast({ message: msg, type: 'error' });
+      return;
+    }
+
+    if (!cleanLast) {
+      const msg = 'Please enter your last name.';
+      setError(msg);
+      setToast({ message: msg, type: 'error' });
+      return;
+    }
+
+    if (/^\d/.test(cleanLast)) {
+      const msg = 'Last name cannot start with a number. Please enter a valid name.';
+      setError(msg);
+      setToast({ message: msg, type: 'error' });
+      return;
+    }
+
+    if (!cleanSid) {
+      const msg = 'Please enter your Student ID / Roll number.';
+      setError(msg);
+      setToast({ message: msg, type: 'error' });
       return;
     }
 
@@ -22,13 +84,15 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
     setError(null);
     try {
       const updated = await updateProfileApi({
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        student_id_str: studentId.trim(),
+        first_name: cleanFirst,
+        last_name: cleanLast,
+        student_id_str: cleanSid,
       });
       onComplete(updated);
     } catch (err) {
-      setError(err.message || 'Failed to complete profile. Please try again.');
+      const errMsg = err.message || 'Failed to complete profile. Please try again.';
+      setError(errMsg);
+      setToast({ message: errMsg, type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -140,7 +204,7 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
                 onChange={(e) => setStudentId(e.target.value)}
                 className="form-input"
                 style={{ paddingLeft: '40px' }}
-                placeholder="e.g. 202401045"
+                placeholder="e.g. 123456789"
                 required
                 autoFocus
               />
@@ -170,6 +234,14 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
           </button>
         </form>
       </div>
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }

@@ -339,6 +339,12 @@ class AdminUserItem(BaseModel):
     submissions_count: int = 0
 
 
+class AdminUpdateUserRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    student_id_str: Optional[str] = None
+
+
 class AdminClassItem(BaseModel):
     id: int
     name: str

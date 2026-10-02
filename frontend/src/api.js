@@ -222,6 +222,13 @@ export async function deleteUserApi(userId) {
   });
 }
 
+export async function adminUpdateUserApi(userId, data) {
+  return apiRequest(`/admin/users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function getAdminAllClassesApi() {
   return apiRequest('/admin/classes');
 }

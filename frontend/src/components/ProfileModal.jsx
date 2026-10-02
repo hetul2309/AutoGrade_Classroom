@@ -66,18 +66,34 @@ export default function ProfileModal({
 
   const handleSaveDetails = async (e) => {
     e.preventDefault();
+    const cleanFirst = firstName.trim();
+    const cleanLast = lastName.trim();
+
+    if (/^\d/.test(cleanFirst)) {
+      setError('First name cannot start with a number.');
+      return;
+    }
+    if (/^\d/.test(cleanLast)) {
+      setError('Last name cannot start with a number.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccess(null);
 
     try {
       const updatedUser = await updateProfileApi({
-        first_name: firstName,
-        last_name: lastName,
-        student_id_str: studentId,
+        first_name: cleanFirst,
+        last_name: cleanLast,
+        student_id_str: studentId.trim(),
       });
       setSuccess('Profile details saved successfully!');
       if (onProfileUpdated) onProfileUpdated(updatedUser);
+      // Close modal upon saving changes
+      setTimeout(() => {
+        onClose();
+      }, 450);
     } catch (err) {
       setError(err.message || 'Failed to update profile.');
     } finally {
@@ -186,22 +202,23 @@ export default function ProfileModal({
         {/* Navigation Tabs */}
         <div style={{
           display: 'flex',
-          padding: '12px 24px 0',
+          padding: '10px 20px 0',
           gap: '8px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          background: 'rgba(0, 0, 0, 0.1)'
+          borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+          background: '#1a202c', // Dark grey background for both themes
         }}>
           <button
             type="button"
             onClick={() => { setActiveTab('details'); setError(null); setSuccess(null); }}
             style={{
-              padding: '10px 16px',
+              padding: '10px 18px',
               fontSize: '0.88rem',
-              fontWeight: '600',
+              fontWeight: activeTab === 'details' ? '700' : '500',
               border: 'none',
-              borderBottom: activeTab === 'details' ? '2px solid var(--primary)' : '2px solid transparent',
-              background: 'none',
-              color: activeTab === 'details' ? '#fff' : 'var(--text-dim)',
+              borderBottom: activeTab === 'details' ? '3px solid #ff6a5b' : '3px solid transparent',
+              background: activeTab === 'details' ? 'rgba(255, 106, 91, 0.12)' : 'transparent',
+              color: activeTab === 'details' ? '#ff758c' : '#ffffff', // Active: orange-pink (#ff758c), Inactive: white (#ffffff)
+              borderRadius: '8px 8px 0 0',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -209,20 +226,21 @@ export default function ProfileModal({
               transition: 'all 0.15s ease'
             }}
           >
-            <User size={16} />
+            <User size={16} color={activeTab === 'details' ? '#ff758c' : '#ffffff'} />
             <span>Profile Details</span>
           </button>
           <button
             type="button"
             onClick={() => { setActiveTab('security'); setError(null); setSuccess(null); }}
             style={{
-              padding: '10px 16px',
+              padding: '10px 18px',
               fontSize: '0.88rem',
-              fontWeight: '600',
+              fontWeight: activeTab === 'security' ? '700' : '500',
               border: 'none',
-              borderBottom: activeTab === 'security' ? '2px solid var(--primary)' : '2px solid transparent',
-              background: 'none',
-              color: activeTab === 'security' ? '#fff' : 'var(--text-dim)',
+              borderBottom: activeTab === 'security' ? '3px solid #ff6a5b' : '3px solid transparent',
+              background: activeTab === 'security' ? 'rgba(255, 106, 91, 0.12)' : 'transparent',
+              color: activeTab === 'security' ? '#ff758c' : '#ffffff', // Active: orange-pink (#ff758c), Inactive: white (#ffffff)
+              borderRadius: '8px 8px 0 0',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -230,7 +248,7 @@ export default function ProfileModal({
               transition: 'all 0.15s ease'
             }}
           >
-            <KeyRound size={16} />
+            <KeyRound size={16} color={activeTab === 'security' ? '#ff758c' : '#ffffff'} />
             <span>Change Password</span>
           </button>
         </div>

@@ -2,12 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users, Shield, BookOpen, FileText, CheckCircle2, Clock, AlertTriangle,
   Search, RefreshCw, Trash2, ArrowRight, Layers, Mail, Calendar, UserCheck,
-  IdCard, Filter, Eye, Sparkles, GraduationCap, School, Database
+  IdCard, Filter, Eye, Sparkles, GraduationCap, School, Database, Edit2, X, AlertCircle
 } from 'lucide-react';
 import {
   getAdminStatsApi,
   getAdminUsersApi,
   deleteUserApi,
+  adminUpdateUserApi,
   getAdminAllClassesApi,
   getAdminAllSubmissionsApi
 } from '../api';
@@ -34,6 +35,80 @@ export default function AdminPortalPage({ currentUser, onSwitchToCourses }) {
   // Delete modal state
   const [userToDelete, setUserToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Edit modal state
+  const [editingUser, setEditingUser] = useState(null);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editStudentId, setEditStudentId] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState(null);
+
+  const handleOpenEditUser = (u) => {
+    setEditingUser(u);
+    setEditFirstName(u.first_name || (u.name ? u.name.split(' ')[0] : ''));
+    setEditLastName(u.last_name || (u.name ? u.name.split(' ').slice(1).join(' ') : ''));
+    setEditStudentId(u.student_id_str || '');
+    setEditError(null);
+  };
+
+  const handleSaveUserEdit = async (e) => {
+    e.preventDefault();
+    const cleanFirst = editFirstName.trim();
+    const cleanLast = editLastName.trim();
+    const cleanSid = editStudentId.trim();
+
+    if (!cleanFirst) {
+      setEditError('First name cannot be empty.');
+      setToast({ message: 'First name cannot be empty.', type: 'error' });
+      return;
+    }
+    if (/^\d/.test(cleanFirst)) {
+      setEditError('First name cannot start with a number.');
+      setToast({ message: 'First name cannot start with a number.', type: 'error' });
+      return;
+    }
+
+    if (!cleanLast) {
+      setEditError('Last name cannot be empty.');
+      setToast({ message: 'Last name cannot be empty.', type: 'error' });
+      return;
+    }
+    if (/^\d/.test(cleanLast)) {
+      setEditError('Last name cannot start with a number.');
+      setToast({ message: 'Last name cannot start with a number.', type: 'error' });
+      return;
+    }
+
+    if (!cleanSid) {
+      setEditError('Student ID / Roll number cannot be empty.');
+      setToast({ message: 'Student ID / Roll number cannot be empty.', type: 'error' });
+      return;
+    }
+
+    try {
+      setSavingEdit(true);
+      setEditError(null);
+      const updated = await adminUpdateUserApi(editingUser.id, {
+        first_name: cleanFirst,
+        last_name: cleanLast,
+        student_id_str: cleanSid,
+      });
+
+      setUsers((prev) =>
+        prev.map((item) => (item.id === editingUser.id ? { ...item, ...updated } : item))
+      );
+
+      setToast({ message: `Successfully updated ${updated.name}'s profile!`, type: 'success' });
+      setEditingUser(null);
+    } catch (err) {
+      const msg = err.message || 'Failed to update user details.';
+      setEditError(msg);
+      setToast({ message: msg, type: 'error' });
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -446,19 +521,20 @@ export default function AdminPortalPage({ currentUser, onSwitchToCourses }) {
                     <th style={{ padding: '14px 18px', fontWeight: '700' }}>Role</th>
                     <th style={{ padding: '14px 18px', fontWeight: '700' }}>Classes</th>
                     <th style={{ padding: '14px 18px', fontWeight: '700' }}>Registered Date</th>
+                    <th style={{ padding: '14px 18px', fontWeight: '700', textAlign: 'center' }}>Edit</th>
                     <th style={{ padding: '14px 18px', fontWeight: '700', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={8} style={{ padding: '36px 0' }}>
+                      <td colSpan={9} style={{ padding: '36px 0' }}>
                         <LoadingSpinner text="Loading database records..." size={48} minHeight="140px" />
                       </td>
                     </tr>
                   ) : users.length === 0 ? (
                     <tr>
-                      <td colSpan={8} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
                         No user accounts matched your search criteria.
                       </td>
                     </tr>
@@ -530,6 +606,30 @@ export default function AdminPortalPage({ currentUser, onSwitchToCourses }) {
                         </td>
                         <td style={{ padding: '14px 18px', color: 'var(--text-dim)', fontSize: '0.82rem' }}>
                           {new Date(u.created_at).toLocaleDateString()}
+                        </td>
+                        <td style={{ padding: '14px 18px', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditUser(u)}
+                            className="btn-ghost"
+                            style={{
+                              color: 'var(--primary)',
+                              padding: '5px 12px',
+                              borderRadius: '8px',
+                              background: 'rgba(255, 106, 0, 0.08)',
+                              border: '1px solid rgba(255, 106, 0, 0.25)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              fontSize: '0.8rem',
+                              fontWeight: '600',
+                              cursor: 'pointer'
+                            }}
+                            title="Edit user full name and student ID"
+                          >
+                            <Edit2 size={14} />
+                            <span>Edit</span>
+                          </button>
                         </td>
                         <td style={{ padding: '14px 18px', textAlign: 'right' }}>
                           {u.id !== currentUser?.id ? (
@@ -721,6 +821,194 @@ export default function AdminPortalPage({ currentUser, onSwitchToCourses }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── EDIT USER MODAL (Admin) ── */}
+      {editingUser && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
+          animation: 'fadeIn 0.15s ease-out'
+        }}>
+          <div style={{
+            background: 'var(--modal-bg, #131b2e)', border: '1px solid var(--border-subtle)',
+            borderRadius: '20px', maxWidth: '480px', width: '100%', padding: '28px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px rgba(255, 106, 0, 0.15)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '40px', height: '40px', borderRadius: '12px',
+                  background: 'var(--primary-gradient)', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', color: '#fff', boxShadow: 'var(--shadow-glow)'
+                }}>
+                  <Edit2 size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', color: 'var(--text-main)' }}>Edit User Details</h3>
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                    {editingUser.email} • ID #{editingUser.id}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: '6px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {editError && (
+              <div style={{
+                padding: '10px 14px', background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '10px',
+                color: '#f87171', fontSize: '0.85rem', marginBottom: '16px',
+                display: 'flex', alignItems: 'center', gap: '8px'
+              }}>
+                <AlertCircle size={16} />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveUserEdit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    First Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editFirstName}
+                    onChange={(e) => setEditFirstName(e.target.value)}
+                    className="form-input"
+                    placeholder="First name"
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editLastName}
+                    onChange={(e) => setEditLastName(e.target.value)}
+                    className="form-input"
+                    placeholder="Last name"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                  Student ID / Roll Number
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <IdCard size={16} color="var(--text-dim)" style={{ position: 'absolute', left: '14px', top: '12px' }} />
+                  <input
+                    type="text"
+                    value={editStudentId}
+                    onChange={(e) => setEditStudentId(e.target.value)}
+                    className="form-input"
+                    style={{ paddingLeft: '40px' }}
+                    placeholder="e.g. 202401045"
+                    required
+                  />
+                </div>
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-dim)', marginTop: '4px', display: 'block' }}>
+                  Used for lab submissions, roll identification, and grading records.
+                </span>
+              </div>
+
+              <div style={{
+                padding: '10px 14px',
+                background: 'rgba(255, 106, 0, 0.08)',
+                border: '1px solid rgba(255, 106, 0, 0.2)',
+                borderRadius: '10px',
+                fontSize: '0.82rem',
+                color: 'var(--text-muted)'
+              }}>
+                Full Name will update to:{' '}
+                <strong style={{ color: 'var(--primary)' }}>
+                  {`${editFirstName.trim()} ${editLastName.trim()}`.trim() || '—'}
+                </strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="btn-ghost"
+                  style={{ padding: '9px 18px', borderRadius: '8px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="btn-primary"
+                  style={{
+                    padding: '9px 20px', borderRadius: '8px',
+                    display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700'
+                  }}
+                >
+                  <CheckCircle2 size={16} />
+                  <span>{savingEdit ? 'Saving Changes...' : 'Save Changes'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── DELETE USER CONFIRMATION MODAL ── */}
+      {userToDelete && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+        }}>
+          <div style={{
+            background: 'var(--modal-bg, #131b2e)', border: '1px solid var(--border-subtle)',
+            borderRadius: '16px', maxWidth: '440px', width: '100%', padding: '24px', boxShadow: 'var(--shadow-card)'
+          }}>
+            <h3 style={{ margin: '0 0 10px', color: 'var(--text-main)', fontSize: '1.2rem' }}>Delete User Account</h3>
+            <p style={{ margin: '0 0 20px', color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              Are you sure you want to delete <strong>{userToDelete.name}</strong> ({userToDelete.email})? This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="btn-ghost"
+                style={{ padding: '8px 16px', borderRadius: '8px' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteUser}
+                disabled={deleting}
+                className="btn-danger"
+                style={{ padding: '8px 18px', borderRadius: '8px', background: '#ef4444', color: '#fff', border: 'none', fontWeight: '600' }}
+              >
+                {deleting ? 'Deleting...' : 'Delete User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
       )}
     </div>
   );

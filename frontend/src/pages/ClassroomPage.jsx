@@ -191,8 +191,8 @@ export default function ClassroomPage({ user, onSelectClass }) {
                   {actionModal.type === 'delete'
                     ? 'Delete Class?'
                     : actionModal.type === 'leave'
-                    ? 'Leave Class?'
-                    : 'Unenroll from Class?'}
+                      ? 'Leave Class?'
+                      : 'Unenroll from Class?'}
                 </h3>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                   {actionModal.cls.name}
@@ -262,8 +262,8 @@ export default function ClassroomPage({ user, onSelectClass }) {
                       {actionModal.type === 'delete'
                         ? 'Delete Class'
                         : actionModal.type === 'leave'
-                        ? 'Leave Class'
-                        : 'Unenroll'}
+                          ? 'Leave Class'
+                          : 'Unenroll'}
                     </span>
                   </>
                 )}
@@ -621,7 +621,7 @@ export default function ClassroomPage({ user, onSelectClass }) {
                 <div style={{ marginTop: '16px', fontSize: '0.82rem', opacity: 0.95, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span>Instructor:</span>
                   <span style={{ fontWeight: '700' }}>
-                    {cls.is_teacher || cls.teacher_id === user?.id ? `${cls.teacher_name} (You)` : cls.teacher_name}
+                    {cls.is_teacher || cls.teacher_id === user?.id ? `${cls.teacher_name} ` : cls.teacher_name}
                   </span>
                 </div>
               </div>
