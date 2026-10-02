@@ -36,8 +36,27 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
   const [lastName, setLastName] = useState(sanitizeInitialName(rawLast));
   const [studentId, setStudentId] = useState(getInitialStudentId());
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
+
+  const showToast = (message, type = 'error') => {
+    setToast({ message, type, id: Date.now() });
+  };
+
+  const handleFirstNameChange = (e) => {
+    const val = e.target.value;
+    if (val && /^\d/.test(val)) {
+      showToast('First name cannot start with a number.', 'error');
+    }
+    setFirstName(val);
+  };
+
+  const handleLastNameChange = (e) => {
+    const val = e.target.value;
+    if (val && /^\d/.test(val)) {
+      showToast('Last name cannot start with a number.', 'error');
+    }
+    setLastName(val);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -46,42 +65,31 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
     const cleanSid = studentId.trim();
 
     if (!cleanFirst) {
-      const msg = 'Please enter your first name.';
-      setError(msg);
-      setToast({ message: msg, type: 'error' });
+      showToast('Please enter your first name.', 'error');
       return;
     }
 
     if (/^\d/.test(cleanFirst)) {
-      const msg = 'First name cannot start with a number. Please enter a valid name.';
-      setError(msg);
-      setToast({ message: msg, type: 'error' });
+      showToast('First name cannot start with a number. Please enter a valid name.', 'error');
       return;
     }
 
     if (!cleanLast) {
-      const msg = 'Please enter your last name.';
-      setError(msg);
-      setToast({ message: msg, type: 'error' });
+      showToast('Please enter your last name.', 'error');
       return;
     }
 
     if (/^\d/.test(cleanLast)) {
-      const msg = 'Last name cannot start with a number. Please enter a valid name.';
-      setError(msg);
-      setToast({ message: msg, type: 'error' });
+      showToast('Last name cannot start with a number. Please enter a valid name.', 'error');
       return;
     }
 
     if (!cleanSid) {
-      const msg = 'Please enter your Student ID / Roll number.';
-      setError(msg);
-      setToast({ message: msg, type: 'error' });
+      showToast('Please enter your Student ID / Roll number.', 'error');
       return;
     }
 
     setLoading(true);
-    setError(null);
     try {
       const updated = await updateProfileApi({
         first_name: cleanFirst,
@@ -90,9 +98,7 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
       });
       onComplete(updated);
     } catch (err) {
-      const errMsg = err.message || 'Failed to complete profile. Please try again.';
-      setError(errMsg);
-      setToast({ message: errMsg, type: 'error' });
+      showToast(err.message || 'Failed to complete profile. Please try again.', 'error');
     } finally {
       setLoading(false);
     }
@@ -144,24 +150,6 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
           </p>
         </div>
 
-        {error && (
-          <div style={{
-            padding: '12px 16px',
-            background: 'rgba(239, 68, 68, 0.15)',
-            border: '1px solid rgba(239, 68, 68, 0.35)',
-            borderRadius: '10px',
-            color: '#f87171',
-            fontSize: '0.88rem',
-            marginBottom: '20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px'
-          }}>
-            <AlertCircle size={18} style={{ flexShrink: 0 }} />
-            <span>{error}</span>
-          </div>
-        )}
-
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
@@ -171,7 +159,7 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
               <input
                 type="text"
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
+                onChange={handleFirstNameChange}
                 className="form-input"
                 placeholder="First name"
                 required
@@ -184,7 +172,7 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
               <input
                 type="text"
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
+                onChange={handleLastNameChange}
                 className="form-input"
                 placeholder="Last name"
                 required
@@ -237,6 +225,7 @@ export default function CompleteProfileModal({ isOpen, currentUser, onComplete }
 
       {toast && (
         <Toast
+          key={toast.id}
           message={toast.message}
           type={toast.type}
           onClose={() => setToast(null)}
