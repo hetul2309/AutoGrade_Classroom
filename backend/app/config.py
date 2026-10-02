@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     MAIL_FROM: str = ""
     FROM_EMAIL: str = ""
 
+    # Cloud HTTP Email APIs (over port 443 HTTPS - bypasses Render SMTP port blocks)
+    RESEND_API_KEY: str = ""
+    RESEND_FROM: str = ""
+    BREVO_API_KEY: str = ""
+    BREVO_SENDER_EMAIL: str = ""
+
     # Cloudinary Storage
     CLOUDINARY_CLOUD_NAME: str = ""
     CLOUDINARY_API_KEY: str = ""

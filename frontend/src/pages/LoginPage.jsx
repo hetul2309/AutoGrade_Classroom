@@ -267,7 +267,9 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
       setMode('signup-otp');
       setSuccessMsg(`Verification code sent to ${signupEmail.trim()}. Please enter the 6-digit code.`);
     } catch (err) {
-      showToast(err.message || 'Failed to send verification code. Please check your email.', 'error');
+      const msg = err.message || 'Failed to send verification code. Please check your email.';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -333,7 +335,9 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
       setForgotStep(2);
       setSuccessMsg(`Reset code sent to ${forgotEmail.trim()}.`);
     } catch (err) {
-      showToast(err.message || 'No registered account found with this email.', 'error');
+      const msg = err.message || 'No registered account found with this email.';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -637,6 +641,24 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
         )}
 
         {/* Status Banners */}
+        {error && (
+          <div style={{
+            padding: '12px 16px',
+            background: 'rgba(239, 68, 68, 0.15)',
+            border: '1px solid rgba(239, 68, 68, 0.35)',
+            borderRadius: '10px',
+            color: '#f87171',
+            fontSize: '0.88rem',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <AlertCircle size={18} style={{ flexShrink: 0 }} />
+            <span>{error}</span>
+          </div>
+        )}
+
         {successMsg && (
           <div style={{
             padding: '12px 16px',
