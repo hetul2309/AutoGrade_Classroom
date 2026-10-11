@@ -121,20 +121,28 @@ export default function AdminDashboard() {
 
   // Filtered grades list
   const filteredGrades = useMemo(() => {
-    return grades.filter((g) => {
-      const matchesSearch =
-        g.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        g.student_email.toLowerCase().includes(searchQuery.toLowerCase());
+    return grades
+      .filter((g) => {
+        const matchesSearch =
+          g.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          g.student_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          String(g.student_id_str || g.student_id || '').toLowerCase().includes(searchQuery.toLowerCase());
 
-      const matchesStatus =
-        statusFilter === 'all'
-          ? true
-          : statusFilter === 'flagged'
-          ? g.flagged
-          : g.submission_status === statusFilter;
+        const matchesStatus =
+          statusFilter === 'all'
+            ? true
+            : statusFilter === 'flagged'
+            ? g.flagged
+            : g.submission_status === statusFilter;
 
-      return matchesSearch && matchesStatus;
-    });
+        return matchesSearch && matchesStatus;
+      })
+      .slice()
+      .sort((a, b) => {
+        const idA = String(a.student_id_str || a.student_id || '').trim();
+        const idB = String(b.student_id_str || b.student_id || '').trim();
+        return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+      });
   }, [grades, searchQuery, statusFilter]);
 
   // Key Statistics
@@ -406,7 +414,9 @@ export default function AdminDashboard() {
                       {/* Student Info */}
                       <td>
                         <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>{item.student_name}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>{item.student_email}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                          ID: <span style={{ fontFamily: 'var(--font-mono)' }}>{item.student_id_str || item.student_id}</span> &bull; {item.student_email}
+                        </div>
                       </td>
 
                       {/* Status Badge */}

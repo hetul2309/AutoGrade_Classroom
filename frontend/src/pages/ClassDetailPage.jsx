@@ -95,6 +95,7 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
   const recheckingSubIdRef = useRef(recheckingSubId);
   const recheckingAllRef = useRef(recheckingAll);
   const triggeringRef = useRef(triggering);
+  const activeAssignmentIdRef = useRef(null);
 
   useEffect(() => {
     recheckingSubIdRef.current = recheckingSubId;
@@ -253,19 +254,22 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
   // 3. Load admin evaluation grades when selected assignment changes
   const loadEvalGrades = async (assignmentId, silent = false) => {
     if (!assignmentId || !isTeacher) return;
+    activeAssignmentIdRef.current = assignmentId;
     try {
       if (!silent) {
         setEvalLoading(true);
         setEvalGrades([]);
       }
       const data = await getAdminAssignmentGradesApi(assignmentId);
-      setEvalGrades(data);
+      if (activeAssignmentIdRef.current === assignmentId) {
+        setEvalGrades(data);
+      }
     } catch (err) {
       if (!silent) {
         setToast({ message: err.message || 'Failed to load grades', type: 'error' });
       }
     } finally {
-      if (!silent) setEvalLoading(false);
+      if (!silent && activeAssignmentIdRef.current === assignmentId) setEvalLoading(false);
     }
   };
 
@@ -554,7 +558,11 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
     // Required columns: Student ID, Email ID, Marks, AI Reason
     const headers = ['Student ID', 'Email ID', 'Marks', 'AI Reason'];
 
-    const sortedGrades = [...evalGrades].sort((a, b) => (a.student_email || '').localeCompare(b.student_email || '', undefined, { sensitivity: 'base' }));
+    const sortedGrades = [...evalGrades].sort((a, b) => {
+      const idA = String(a.student_id_str || a.student_id || '').trim();
+      const idB = String(b.student_id_str || b.student_id || '').trim();
+      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+    });
     const rows = sortedGrades.map((item) => {
       // 1. Student ID: Roll number / university student ID (student_id_str, fallback to students list or student_id)
       const matchedStudent = students?.find((s) => s.id === item.student_id);
@@ -636,6 +644,7 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
         const matchesSearch =
           g.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           g.student_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          String(g.student_id_str || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
           String(g.student_id).includes(searchQuery);
         let matchesStatus = true;
         if (statusFilter === 'flagged') matchesStatus = g.flagged;
@@ -645,7 +654,11 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
         return matchesSearch && matchesStatus;
       })
       .slice()
-      .sort((a, b) => (a.student_email || '').localeCompare(b.student_email || '', undefined, { sensitivity: 'base' }));
+      .sort((a, b) => {
+        const idA = String(a.student_id_str || a.student_id || '').trim();
+        const idB = String(b.student_id_str || b.student_id || '').trim();
+        return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+      });
   }, [evalGrades, searchQuery, statusFilter]);
 
   if (loading) {
@@ -1738,7 +1751,7 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
                         <td style={{ padding: '14px 18px' }}>
                           <div style={{ fontWeight: '600' }}>{item.student_name}</div>
                           <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                            ID: <span style={{ fontFamily: 'var(--font-mono)' }}>{item.student_id}</span> &bull; {item.student_email}
+                            ID: <span style={{ fontFamily: 'var(--font-mono)' }}>{item.student_id_str || item.student_id}</span> &bull; {item.student_email}
                           </div>
                         </td>
 

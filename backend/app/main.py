@@ -2275,7 +2275,7 @@ async def get_assignment_grades_for_admin(
             select(Student)
             .join(ClassEnrollment, ClassEnrollment.student_id == Student.id)
             .where(ClassEnrollment.class_id == assignment.class_id)
-            .order_by(Student.id.asc())
+            .order_by(Student.student_id_str.asc(), Student.email.asc())
         )
         enrolled_students = (await session.execute(enr_stmt)).scalars().all()
 
@@ -2358,7 +2358,12 @@ async def get_assignment_grades_for_admin(
                 )
             )
 
-    items.sort(key=lambda x: (x.student_email or "").lower())
+    def get_sort_key(item: AdminGradeItem):
+        raw_id = (item.student_id_str or str(item.student_id or "")).strip()
+        numeric_part = int(raw_id) if raw_id.isdigit() else 0
+        return (numeric_part, raw_id.lower(), (item.student_email or "").lower())
+
+    items.sort(key=get_sort_key)
     return items
 
 
