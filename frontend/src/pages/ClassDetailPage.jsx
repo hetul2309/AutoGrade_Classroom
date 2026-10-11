@@ -254,7 +254,10 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
   const loadEvalGrades = async (assignmentId, silent = false) => {
     if (!assignmentId || !isTeacher) return;
     try {
-      if (!silent) setEvalLoading(true);
+      if (!silent) {
+        setEvalLoading(true);
+        setEvalGrades([]);
+      }
       const data = await getAdminAssignmentGradesApi(assignmentId);
       setEvalGrades(data);
     } catch (err) {
@@ -311,7 +314,7 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
 
   const handleAssignmentCreated = (newAss) => {
     setAssignments((prev) => [...prev, newAss]);
-    if (!selectedAssignmentId) setSelectedAssignmentId(newAss.id);
+    setSelectedAssignmentId(newAss.id);
     setShowCreateAssignmentModal(false);
     setToast({ message: `Assignment "${newAss.title}" published!`, type: 'success' });
   };
@@ -1767,7 +1770,9 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
                         </td>
 
                         <td style={{ padding: '14px 18px', fontFamily: 'var(--font-mono)', fontWeight: '700' }}>
-                          {item.marks !== null ? (
+                          {isNoSub ? (
+                            <span style={{ color: 'var(--text-dim)' }}>—</span>
+                          ) : item.marks !== null ? (
                             <span style={{ color: item.marks / item.max_marks >= 0.7 ? '#10b981' : item.marks === 0 ? '#ef4444' : '#f59e0b' }}>
                               {item.marks} / {item.max_marks}
                             </span>
