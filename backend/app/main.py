@@ -2795,7 +2795,7 @@ async def get_admin_users(
             )
         )
 
-    stmt = stmt.order_by(Student.created_at.desc())
+    stmt = stmt.order_by(Student.student_id_str.asc(), Student.id.asc())
     res = await session.execute(stmt)
     users = res.scalars().all()
 
@@ -2835,6 +2835,14 @@ async def get_admin_users(
             )
         )
 
+    def get_user_sort_key(u: AdminUserItem):
+        raw_id = (u.student_id_str or str(u.id or "")).strip()
+        if raw_id.isdigit():
+            return (1, int(raw_id), (u.email or "").lower())
+        else:
+            return (0, raw_id.lower(), (u.email or "").lower())
+
+    user_items.sort(key=get_user_sort_key)
     return user_items
 
 
