@@ -6,13 +6,31 @@ from app.config import get_settings
 settings = get_settings()
 
 def get_async_db_url(url: str) -> str:
-    """Normalize postgres:// and postgresql:// to postgresql+asyncpg:// for SQLAlchemy async engine."""
+    """Normalize postgres:// and postgresql:// to postgresql+asyncpg:// for SQLAlchemy async engine and sanitize query params."""
     if not url:
         return url
     if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql+asyncpg://", 1)
-    if url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
-        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    # Clean query parameters for asyncpg (asyncpg requires ssl=require instead of sslmode=require and rejects channel_binding)
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    parsed = urlparse(url)
+    if parsed.query:
+        qs = parse_qs(parsed.query)
+        if "sslmode" in qs:
+            qs["ssl"] = qs.pop("sslmode")
+        qs.pop("channel_binding", None)
+        new_query = urlencode(qs, doseq=True)
+        url = urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            new_query,
+            parsed.fragment
+        ))
     return url
 
 
