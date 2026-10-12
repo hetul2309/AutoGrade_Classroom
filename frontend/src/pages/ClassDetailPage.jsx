@@ -27,6 +27,7 @@ import {
   downloadAllSubmissionsZipApi,
   downloadAssignmentAttachmentApi,
   updateAssignmentApi,
+  deleteAssignmentApi,
   uploadSubmissionApi,
   getMyGradesApi,
   getAssignmentAttachmentUrl
@@ -59,6 +60,8 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
   const [removing, setRemoving] = useState(false);
   const [confirmActionModal, setConfirmActionModal] = useState(null); // { type: 'delete' | 'leave' | 'unenroll' }
   const [actionProcessing, setActionProcessing] = useState(false);
+  const [assignmentToDelete, setAssignmentToDelete] = useState(null);
+  const [deletingAssignment, setDeletingAssignment] = useState(false);
   const [activeTab, setActiveTab] = useState('classwork'); // 'classwork' | 'evaluation' | 'people'
   const [loading, setLoading] = useState(true);
 
@@ -327,6 +330,27 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
     setAssignments((prev) => prev.map((a) => (a.id === updatedAss.id ? updatedAss : a)));
     setEditingAssignment(null);
     setToast({ message: `Assignment "${updatedAss.title}" updated successfully!`, type: 'success' });
+  };
+
+  const handleDeleteAssignment = async () => {
+    if (!assignmentToDelete) return;
+    setDeletingAssignment(true);
+    try {
+      await deleteAssignmentApi(assignmentToDelete.id);
+      const deletedTitle = assignmentToDelete.title;
+      const deletedId = assignmentToDelete.id;
+      setAssignments((prev) => prev.filter((a) => a.id !== deletedId));
+      if (selectedAssignmentId === deletedId) {
+        const remaining = assignments.filter((a) => a.id !== deletedId);
+        setSelectedAssignmentId(remaining.length > 0 ? remaining[0].id : null);
+      }
+      setAssignmentToDelete(null);
+      setToast({ message: `Assignment "${deletedTitle}" was deleted successfully.`, type: 'success' });
+    } catch (err) {
+      setToast({ message: err.message || 'Failed to delete assignment', type: 'error' });
+    } finally {
+      setDeletingAssignment(false);
+    }
   };
 
   const handleStudentUpload = async (assignmentId) => {
@@ -705,6 +729,7 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
           assignment={editingAssignment}
           onClose={() => setEditingAssignment(null)}
           onUpdated={handleAssignmentUpdated}
+          onDelete={(ass) => setAssignmentToDelete(ass)}
         />
       )}
 
@@ -1051,19 +1076,42 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
                       )}
 
                       {isTeacher && (
-                        <button
-                          onClick={() => setEditingAssignment(ass)}
-                          className="btn-secondary"
-                          style={{
-                            fontSize: '0.84rem',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                          }}
-                        >
-                          <Edit3 size={16} color="var(--primary)" />
-                          <span>Edit</span>
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setEditingAssignment(ass)}
+                            className="btn-secondary"
+                            style={{
+                              fontSize: '0.84rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            <Edit3 size={16} color="var(--primary)" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAssignmentToDelete(ass)}
+                            className="btn-secondary"
+                            style={{
+                              fontSize: '0.84rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              color: '#ef4444',
+                              borderColor: 'rgba(239, 68, 68, 0.35)',
+                              background: 'rgba(239, 68, 68, 0.08)',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                            title="Permanently delete this assignment"
+                          >
+                            <Trash2 size={16} color="#ef4444" />
+                            <span>Delete</span>
+                          </button>
+                        </>
                       )}
                     </div>
 
@@ -1470,6 +1518,30 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
                 >
                   <FileSpreadsheet size={16} />
                   <span>Download Excel (CSV)</span>
+                </button>
+              )}
+
+              {/* Delete Assignment Button for Teacher / Co-teacher */}
+              {isTeacher && currentAssignment && (
+                <button
+                  type="button"
+                  onClick={() => setAssignmentToDelete(currentAssignment)}
+                  className="btn-secondary"
+                  style={{
+                    padding: '9px 16px',
+                    fontSize: '0.88rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '7px',
+                    color: '#ef4444',
+                    borderColor: 'rgba(239, 68, 68, 0.35)',
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    cursor: 'pointer',
+                  }}
+                  title="Permanently delete this assignment"
+                >
+                  <Trash2 size={16} color="#ef4444" />
+                  <span>Delete Assignment</span>
                 </button>
               )}
 
@@ -2499,6 +2571,100 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
                 }}
               >
                 {removing ? 'Removing...' : 'Yes, Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Delete Assignment */}
+      {assignmentToDelete && (
+        <div className="modal-overlay" style={{ zIndex: 1000 }} onClick={() => !deletingAssignment && setAssignmentToDelete(null)}>
+          <div
+            className="glass-panel"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '480px',
+              width: '90%',
+              padding: '28px',
+              borderRadius: '16px',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              animation: 'scaleUp 0.18s ease',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
+              <div
+                style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '12px',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: '#ef4444',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Trash2 size={24} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>
+                  Delete Assignment?
+                </h3>
+                <div style={{ fontSize: '0.84rem', color: 'var(--text-dim)', marginTop: '2px' }}>
+                  {assignmentToDelete.title}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: '1.55', marginBottom: '24px' }}>
+              Are you sure you want to permanently delete <strong style={{ color: 'var(--text-main)' }}>"{assignmentToDelete.title}"</strong>?
+              <div style={{ marginTop: '12px', padding: '12px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '10px' }}>
+                <span style={{ color: '#ef4444', fontWeight: '600', fontSize: '0.84rem' }}>
+                  ⚠️ Warning: All student notebook submissions, grades, evaluations, and uploaded handouts for this assignment will be permanently removed. This action cannot be undone.
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setAssignmentToDelete(null)}
+                disabled={deletingAssignment}
+                className="btn-secondary"
+                style={{ padding: '9px 18px', fontSize: '0.86rem', fontWeight: '600' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAssignment}
+                disabled={deletingAssignment}
+                style={{
+                  background: '#ef4444',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '9px 20px',
+                  fontWeight: '700',
+                  fontSize: '0.86rem',
+                  cursor: deletingAssignment ? 'not-allowed' : 'pointer',
+                  opacity: deletingAssignment ? 0.7 : 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '7px',
+                  boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)',
+                }}
+              >
+                {deletingAssignment ? (
+                  <span>Deleting...</span>
+                ) : (
+                  <>
+                    <Trash2 size={16} />
+                    <span>Yes, Delete Assignment</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -1246,6 +1246,76 @@ async def download_assignment_attachment(
     )
 
 
+@app.delete("/assignments/{id}", tags=["Assignments"])
+async def delete_assignment(
+    id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: Student = Depends(get_current_user),
+):
+    """
+    Teacher or Co-teacher deletes an assignment:
+    - Verifies that the current user is a teacher or co-teacher of the class (or system admin)
+    - Deletes assignment handout files from Cloudinary and local storage
+    - Deletes student notebook submission files from Cloudinary and local storage
+    - Deletes the assignment record (cascading all student submissions and grades)
+    """
+    assignment = await session.get(Assignment, id)
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    if assignment.class_id:
+        if not await is_user_teacher_or_admin(assignment.class_id, current_user, session):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only teachers or co-teachers of this class can delete this assignment.",
+            )
+    elif current_user.role != UserRole.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only teachers or admins can delete this assignment.",
+        )
+
+    assignment_title = assignment.title
+
+    # 1. Clean up assignment handout from Cloudinary and local storage
+    if assignment.cloudinary_public_id:
+        try:
+            await delete_file_from_cloudinary(assignment.cloudinary_public_id, resource_type="raw")
+        except Exception as e:
+            logger.warning("Could not delete Cloudinary attachment for assignment %d: %s", id, e)
+
+    if assignment.attachment_path and os.path.exists(assignment.attachment_path):
+        try:
+            os.remove(assignment.attachment_path)
+        except Exception as e:
+            logger.warning("Could not delete local attachment file for assignment %d: %s", id, e)
+
+    # 2. Clean up student submissions (Cloudinary assets and local files)
+    subs_res = await session.execute(
+        select(Submission).where(Submission.assignment_id == id)
+    )
+    submissions = subs_res.scalars().all()
+    for sub in submissions:
+        if sub.cloudinary_public_id:
+            try:
+                await delete_file_from_cloudinary(sub.cloudinary_public_id, resource_type="raw")
+            except Exception as e:
+                logger.warning("Could not delete Cloudinary file for submission %d: %s", sub.id, e)
+        if sub.file_path and os.path.exists(sub.file_path):
+            try:
+                os.remove(sub.file_path)
+            except Exception as e:
+                logger.warning("Could not delete local file for submission %d: %s", sub.id, e)
+
+    # 3. Delete assignment (cascading delete to submissions & grades in database)
+    await session.delete(assignment)
+    await session.commit()
+
+    logger.info("User %s deleted assignment id=%d ('%s')", current_user.name, id, assignment_title)
+    return {"message": f"Assignment '{assignment_title}' was successfully deleted.", "assignment_id": id}
+
+
+
 @app.get("/classes/{id}/students", response_model=List[ClassMemberResponse], tags=["Classes"])
 async def list_class_students(
     id: int,

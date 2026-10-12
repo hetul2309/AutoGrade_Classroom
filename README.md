@@ -12,6 +12,7 @@ AutoGrade Classroom combines Google Classroom-style course management with AI-po
 * **Google Classroom-Style Hub:** Create classes, generate unique class codes, invite co-teachers, and manage enrolled students.
 * **Student Self-Enrollment:** Students can join any class instantly using its class code.
 * **Rich Assignments:** Publish assignments with lab handout attachments (PDFs/docs), submission deadlines, private LLM prompts, academic marking rubrics, and custom cheating/plagiarism policies.
+* **Assignment Deletion & Management:** Teachers and co-teachers can safely delete assignments with interactive confirmation dialogs, automatically cascading the removal of all student notebook submissions, evaluations, and uploaded cloud/local files.
 * **Handout Storage:** Automated Cloudinary cloud storage integration with local storage fallback.
 
 ### 2. Intelligent AI Grading Engine

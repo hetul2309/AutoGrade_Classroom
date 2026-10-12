@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { X, Edit3, Calendar, FileUp, FileText, CheckCircle, Cpu, Sparkles } from 'lucide-react';
+import { X, Edit3, Calendar, FileUp, FileText, CheckCircle, Cpu, Sparkles, Trash2 } from 'lucide-react';
 import { updateAssignmentApi } from '../api';
 
-export default function EditAssignmentModal({ assignment, onClose, onUpdated }) {
+export default function EditAssignmentModal({ assignment, onClose, onUpdated, onDelete }) {
   // Format existing deadline ISO string to YYYY-MM-DDTHH:mm for datetime-local input
   const formatForInput = (isoStr) => {
     if (!isoStr) return '';
@@ -286,18 +286,45 @@ export default function EditAssignmentModal({ assignment, onClose, onUpdated }) 
           </div>
 
           {/* Footer Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-subtle)', paddingTop: '18px' }}>
-            <button type="button" onClick={onClose} className="btn-secondary" disabled={saving}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={saving}
-              style={{ minWidth: '150px' }}
-            >
-              {saving ? 'Saving Changes...' : 'Save Changes'}
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: onDelete ? 'space-between' : 'flex-end', gap: '12px', borderTop: '1px solid var(--border-subtle)', paddingTop: '18px' }}>
+            {onDelete && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onDelete(assignment);
+                }}
+                disabled={saving}
+                className="btn-secondary"
+                style={{
+                  color: '#ef4444',
+                  borderColor: 'rgba(239, 68, 68, 0.35)',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.86rem',
+                  cursor: 'pointer',
+                }}
+                title="Permanently delete this assignment"
+              >
+                <Trash2 size={16} color="#ef4444" />
+                <span>Delete Assignment</span>
+              </button>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button type="button" onClick={onClose} className="btn-secondary" disabled={saving}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={saving}
+                style={{ minWidth: '150px' }}
+              >
+                {saving ? 'Saving Changes...' : 'Save Changes'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

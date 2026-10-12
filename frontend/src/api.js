@@ -422,6 +422,12 @@ export async function updateAssignmentApi(assignmentId, data) {
   });
 }
 
+export async function deleteAssignmentApi(assignmentId) {
+  return apiRequest(`/assignments/${assignmentId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function getClassStudentsApi(classId) {
   return apiRequest(`/classes/${classId}/students`);
 }
