@@ -25,21 +25,19 @@ The entire platform now supports **Google Gemini 2.0 Flash / 1.5 Flash (100% Fre
 
 ### Backend (`backend/`)
 - Python 3.13.2 managed with `uv`
-- Core dependencies: `google-genai`, `fastapi`, `uvicorn`, `sqlalchemy[asyncio]`, `asyncpg`, `alembic`, `bcrypt`, `python-jose`, `pydantic-settings`, `anthropic`, `nbformat`, `langgraph`
+- Core dependencies: `google-genai`, `fastapi`, `uvicorn`, `sqlalchemy[asyncio]`, `asyncpg`, `alembic`, `bcrypt`, `python-jose`, `pydantic-settings`, `nbformat`, `langgraph`
 - Dev dependencies: `pytest`, `pytest-asyncio`, `httpx`, `pytest-cov`
 - `app/config.py`:
-  - `LLM_PROVIDER: str = "gemini"` (or `"anthropic"`)
+  - `LLM_PROVIDER: str = "gemini"`
   - `GEMINI_API_KEY: str = ""`
   - `GEMINI_MODEL: str = "gemini-2.0-flash"`
-  - `ANTHROPIC_API_KEY: str = ""`
 - `app/grading.py`:
   - `GeminiGradeSchema(BaseModel)` — Pydantic schema for guaranteed structured output (`marks`, `max_marks`, `reasoning`, `flagged`, `flag_reason`)
   - `grade_with_gemini(...)` — invokes Google Gemini API via official `google-genai` SDK with `response_mime_type="application/json"` and `response_schema=GeminiGradeSchema`
-  - `grade_submission(...)` — dual-provider router with auto-detection (uses Gemini by default or when `AIza...` key is provided; falls back to Claude if configured)
+  - `grade_submission(...)` — Google Gemini grading router with multi-model failover
 - `app/pipeline.py`:
   - 7-node LangGraph orchestration workflow
   - Supports batch grading via Google Gemini with automatic rate-limit pacing (respects 15 RPM free tier) and direct results aggregation
-  - Also retains Anthropic Message Batches API support for dual-mode flexibility
 - `app/auth.py` — Password hashing (`bcrypt`) + JWT generation (`python-jose`) + RBAC (`admin`, `student`)
 - `app/similarity.py` — Dual-engine plagiarism detector (AST structural + Token n-gram Jaccard)
 - `app/notebook_processing.py` — Token-efficient notebook preprocessor (~43%+ token savings)

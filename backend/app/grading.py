@@ -1,7 +1,7 @@
 """
 grading.py
 ----------
-Grades ONE student's preprocessed notebook using the Anthropic Claude API.
+Grades ONE student's preprocessed notebook using the Google Gemini LLM API.
 
 Main entry point:
     grade_submission(
@@ -10,15 +10,14 @@ Main entry point:
         notebook_text: str,
         similarity_flag: SimilarityFlag | None = None,
         max_marks: float = 100.0,
-        model: str = "claude-sonnet-4-5",
+        model: str = "gemini-2.0-flash",
     ) -> GradeResult
 
 Design notes
 ------------
-- Uses Anthropic's **tool use** feature to guarantee structured JSON output.
-  The model is forced to call a `submit_grade` tool whose schema matches
-  GradeResult exactly — no string parsing, no regex, no hallucinated keys.
-- The similarity flag (from Phase 3) is passed as context in the prompt.
+- Uses structured output schema to guarantee structured JSON output.
+  The model produces a schema whose fields match GradeResult exactly.
+- The similarity flag is passed as context in the prompt.
   The model does NOT detect plagiarism itself — it only incorporates a
   pre-computed flag into the flagged/flag_reason fields.
 - All errors are re-raised as typed exceptions (GradingError subclasses)
@@ -412,8 +411,8 @@ def grade_submission(
     provider: str | None = None,
 ) -> GradeResult:
     """
-    Main grading entry point supporting both Google Gemini (Free) and Anthropic Claude.
-    Automatically picks provider based on configuration or available API keys.
+    Main grading entry point powered by Google Gemini with multi-model failover.
+    Automatically routes to Gemini using available API keys.
     """
     chosen_provider = provider
 

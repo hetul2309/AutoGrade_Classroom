@@ -9,7 +9,7 @@ Usage:
     uv run python scripts/demo_grade.py
 
 Requires:
-    - ANTHROPIC_API_KEY set in ../.env
+    - GEMINI_API_KEY set in ../.env
     - Fixture notebook at tests/fixtures/lab1_normal.ipynb
 """
 

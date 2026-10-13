@@ -8,7 +8,7 @@ Requirements satisfied:
    preprocess_node -> similarity_check_node -> build_grading_requests_node ->
    submit_batch_node -> poll_batch_node -> parse_results_node -> persist_results_node
 2. similarity_check_node runs once across ALL submissions for an assignment.
-3. submit_batch_node builds batch requests using Anthropic's Message Batches API.
+3. submit_batch_node builds batch requests and executes LLM grading.
 4. poll_batch_node polls for batch completion and handles partial failures per request.
 5. persist_results_node writes grades to the PostgreSQL database and updates submission statuses.
 6. Single entry point function: `run_grading_pipeline(assignment_id)`.
@@ -290,7 +290,7 @@ async def similarity_check_node(state: PipelineState) -> Dict[str, Any]:
 
 async def build_grading_requests_node(state: PipelineState) -> Dict[str, Any]:
     """
-    Builds the tool-use request payloads for Anthropic's Message Batches API.
+    Builds the tool-use request payloads for the batch grading engine.
     One request per submission with cleaned_text and no error.
     """
     submissions = state.get("submissions", [])
@@ -343,8 +343,8 @@ async def build_grading_requests_node(state: PipelineState) -> Dict[str, Any]:
 
 async def submit_batch_node(state: PipelineState) -> Dict[str, Any]:
     """
-    Submits all prepared grading requests as a single batch to the Anthropic Message Batches API.
-    If direct_execution=True (e.g. for testing/instant grading), performs direct calls instead.
+    Submits all prepared grading requests to the batch grading engine.
+    If direct_execution=True (e.g. for instant grading), performs direct calls instead.
     """
     submissions = state.get("submissions", [])
     requests = [s["grade_request"] for s in submissions if s.get("grade_request")]

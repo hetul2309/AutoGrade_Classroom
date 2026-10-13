@@ -22,7 +22,7 @@ to git, *then* move to the next phase. Don't chain phases back-to-back without c
 - Install Docker Desktop
 - Install Python 3.11+ and Node.js 20+
 - Create an empty git repo for the project, e.g. `notebook-grader/`
-- Get your Anthropic API key from the Claude Console (platform.claude.com) and save it
+- Get your Google Gemini API key from Google AI Studio (aistudio.google.com) and save it
   somewhere safe — you'll paste it into a `.env` file the agent creates, never into code.
 
 ---
@@ -55,7 +55,7 @@ Tasks:
      FK nullable)
 4. Write a simple seed script that creates one admin user and a couple of dummy
    students/assignments for testing.
-5. Set up .env.example with placeholders for DATABASE_URL and ANTHROPIC_API_KEY.
+5. Set up .env.example with placeholders for DATABASE_URL and GEMINI_API_KEY.
 6. Write clear setup instructions in README.md (docker compose up, run migrations,
    run seed script).
 
@@ -92,8 +92,8 @@ Requirements:
 7. Write unit tests using a few sample .ipynb fixtures (create 2-3 small fixture
    notebooks covering: plain code, code with plot output, code with error output,
    markdown cells).
-8. Report approximate token count before/after stripping using Anthropic's token
-   counting API or a simple tiktoken-style estimate, so I can see the savings.
+8. Report approximate token count before/after stripping using a token
+   counting utility or tiktoken-style estimate, so I can see the savings.
 
 Update PROJECT_STATE.md when done, noting this module's location and how to run
 its tests.
@@ -142,12 +142,12 @@ Update PROJECT_STATE.md when done.
 
 ```
 Read PROJECT_STATE.md first. This is Phase 4: build the module that grades ONE
-student's preprocessed notebook using the Claude API. Do not build batch
+student's preprocessed notebook using the LLM API. Do not build batch
 processing or LangGraph orchestration yet — that's Phase 5.
 
 Requirements:
-1. Use the official Anthropic Python SDK.
-2. Use Claude's structured outputs feature so the response is guaranteed valid
+1. Use the official LLM Python SDK (google-genai).
+2. Use structured outputs feature so the response is guaranteed valid
    JSON matching this schema:
    { "marks": number, "max_marks": number, "reasoning": string,
      "flagged": boolean, "flag_reason": string | null }
@@ -175,8 +175,8 @@ Update PROJECT_STATE.md when done.
 
 ```
 Read PROJECT_STATE.md first. This is Phase 5: wire Phases 2-4 together into a
-single orchestrated pipeline using LangGraph, and integrate the Anthropic
-Message Batches API so all students for an assignment can be graded in one
+single orchestrated pipeline using LangGraph, and integrate the batch
+evaluation workflow so all students for an assignment can be graded in one
 batch job instead of one-by-one.
 
 Requirements:
@@ -186,9 +186,8 @@ Requirements:
 2. similarity_check_node should run once across ALL submissions for an
    assignment (not per-student) and attach flags to individual submissions
    before they proceed.
-3. submit_batch_node should build one Batch API request per student and submit
-   them together as a single batch job (see Anthropic's Message Batches API
-   docs for the request format).
+3. submit_batch_node should build grading requests per student and submit
+   them together as a single batch job.
 4. poll_batch_node should poll for batch completion (batches can take up to
    ~24h, though usually much faster) and handle partial failures per-request
    without failing the whole batch.

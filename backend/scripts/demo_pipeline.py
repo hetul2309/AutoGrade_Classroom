@@ -14,8 +14,8 @@ Usage:
     uv run python scripts/demo_pipeline.py [--mock] [--direct]
 
 Flags:
-    --mock    Use mock Claude responses (no API key needed, zero cost)
-    --direct  Use direct LLM calls instead of Message Batches API (instant result)
+    --mock    Use mock LLM responses (no API key needed, zero cost)
+    --direct  Use direct LLM calls instead of background batching (instant result)
 """
 
 import asyncio
@@ -136,7 +136,7 @@ async def main():
     print("      Notebook Grading System — Phase 5 Pipeline Demo")
     print("=" * 70)
 
-    use_mock = "--mock" in sys.argv or not os.environ.get("ANTHROPIC_API_KEY")
+    use_mock = "--mock" in sys.argv or not (os.environ.get("GEMINI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
     use_direct = "--direct" in sys.argv
 
     assignment, subs = await setup_demo_data()
@@ -146,7 +146,7 @@ async def main():
     # Configure client
     mock_client = None
     if use_mock:
-        print("\n[2/4] Running with MOCK Claude batch client (zero API cost)...")
+        print("\n[2/4] Running with MOCK batch client (zero API cost)...")
         # Pre-configure simulated grades
         mock_client = create_mock_batch_client({
             str(subs[0].id): 92.0,
@@ -154,8 +154,8 @@ async def main():
             str(subs[2].id): 55.0,
         })
     else:
-        mode_str = "Direct Execution" if use_direct else "Anthropic Message Batches API"
-        print(f"\n[2/4] Running with REAL Anthropic API ({mode_str})...")
+        mode_str = "Direct Execution" if use_direct else "Batch API"
+        print(f"\n[2/4] Running with REAL API ({mode_str})...")
 
     # Run pipeline
     print("\n[3/4] Executing LangGraph workflow:")

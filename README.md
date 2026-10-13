@@ -2,7 +2,7 @@
 
 An intelligent, full-stack assignment management and automated evaluation system for Jupyter Notebooks (`.ipynb`), designed for educators, teaching assistants, and students.
 
-AutoGrade Classroom combines Google Classroom-style course management with AI-powered grading (Google Gemini / Anthropic Claude), dual-engine code plagiarism detection, real-time evaluation dashboards, and teacher review workflows.
+AutoGrade Classroom combines Google Classroom-style course management with AI-powered grading (Google Gemini), dual-engine code plagiarism detection, real-time evaluation dashboards, and teacher review workflows.
 
 ---
 
@@ -17,7 +17,7 @@ AutoGrade Classroom combines Google Classroom-style course management with AI-po
 
 ### 2. Intelligent AI Grading Engine
 * **Google Gemini Integration (100% Free Tier Supported):** Powered by Gemini 2.0 Flash / 1.5 Flash with native JSON structured output (`GeminiGradeSchema`) for consistent marks and reasoning.
-* **Dual-Provider Architecture:** Supports Google Gemini as default with automatic failover to Anthropic Claude.
+* **Multi-Model Reliability:** Automatic model rotation and graceful failover across Google Gemini models (Gemini 2.5 Flash / 3.8 Flash / Flash Latest).
 * **Rate-Limit Pacing & Rotation:** Automatic request pacing (15 RPM) and multi-key fallback handling to maximize throughput within free-tier quotas.
 * **Token-Efficient Preprocessor:** Cleans ANSI codes, strips excessive outputs, and truncates large payloads before prompt injection (~43%+ token savings).
 * **LangGraph Orchestration:** 7-node grading pipeline that coordinates preprocessing, plagiarism scanning, LLM evaluation, and database persistence.
@@ -55,7 +55,7 @@ AutoGrade Classroom combines Google Classroom-style course management with AI-po
 |---|---|
 | **Backend Framework** | Python 3.13, FastAPI, Uvicorn |
 | **Database & ORM** | PostgreSQL 16 (Local Docker or Serverless Neon PostgreSQL), SQLAlchemy 2.0 (Async), Asyncpg, Alembic |
-| **AI / LLM** | Google Gemini SDK (`google-genai`), Anthropic Claude SDK, LangGraph |
+| **AI / LLM** | Google Gemini SDK (`google-genai`), LangGraph |
 | **Notebook Parsing** | `nbformat`, AST parser |
 | **Cloud Storage** | Cloudinary API |
 | **Frontend** | React 18, Vite 5, Lucide Icons, Vanilla CSS Glassmorphism |
@@ -74,7 +74,7 @@ Notebook_Grading_System/
 │   │   ├── models.py             # Database models (User, Class, Assignment, Submission, Grade)
 │   │   ├── schemas.py            # Pydantic schemas (Request/Response DTOs)
 │   │   ├── auth.py               # Password hashing, JWT token handling, RBAC
-│   │   ├── grading.py            # Gemini & Claude LLM grading adapters
+│   │   ├── grading.py            # Google Gemini LLM grading engine
 │   │   ├── pipeline.py           # LangGraph evaluation pipeline
 │   │   ├── similarity.py         # AST & N-gram plagiarism detection
 │   │   ├── notebook_processing.py# Token-efficient notebook preprocessing
@@ -126,9 +126,6 @@ DATABASE_URL=postgresql+asyncpg://grader:grader_password@localhost:5432/notebook
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=AIzaSy...your-gemini-key-from-aistudio...
 GEMINI_MODEL=gemini-2.0-flash
-
-# Optional Anthropic Claude API Key:
-ANTHROPIC_API_KEY=
 
 # ── Auth & Security ──────────────────────────────────────────────────────────
 SECRET_KEY=generate-a-secure-random-secret-key-here

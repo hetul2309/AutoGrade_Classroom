@@ -299,7 +299,7 @@ export default function AdminDashboard() {
               </div>
 
               <div style={{ fontSize: '0.74rem', color: 'var(--text-dim)' }}>
-                {directMode ? 'Executes immediate LangGraph pass' : 'Submits to Anthropic Message Batches API'}
+                {directMode ? 'Executes immediate LangGraph AI evaluation pass' : 'Executes background batch evaluation'}
               </div>
             </div>
           </div>
