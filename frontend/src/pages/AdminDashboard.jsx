@@ -12,6 +12,7 @@ import EditGradeModal from '../components/EditGradeModal';
 import SimilarityFlagModal from '../components/SimilarityFlagModal';
 import CreateAssignmentModal from '../components/CreateAssignmentModal';
 import Toast from '../components/Toast';
+import whiteLoadingSvg from '../assets/white_loading.svg';
 
 export default function AdminDashboard() {
   const [assignments, setAssignments] = useState([]);
@@ -281,7 +282,11 @@ export default function AdminDashboard() {
                 >
                   {triggering ? (
                     <>
-                      <RefreshCw size={16} className="animate-spin" />
+                      <img
+                        src={whiteLoadingSvg}
+                        alt="Grading in Progress..."
+                        style={{ width: '18px', height: '18px', display: 'inline-block', verticalAlign: 'middle' }}
+                      />
                       <span>Grading in Progress...</span>
                     </>
                   ) : (

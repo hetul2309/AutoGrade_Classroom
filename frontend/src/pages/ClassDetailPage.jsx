@@ -45,6 +45,7 @@ import orangeRecheckSvg from '../assets/orange_recheck_loading.svg';
 import blueRecheckSvg from '../assets/blue_recheck_loading.svg';
 import lightRecheckAllSvg from '../assets/light_recheck_all_loading.svg';
 import darkRecheckAllSvg from '../assets/dark_recheck_all_loading.svg';
+import whiteLoadingSvg from '../assets/white_loading.svg';
 
 export default function ClassDetailPage({ classId, user, onBack, theme = 'light' }) {
   const isLight = theme === 'light';
@@ -1444,7 +1445,11 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
               >
                 {triggering ? (
                   <>
-                    <div className="animate-spin" style={{ width: '16px', height: '16px', border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                    <img
+                      src={whiteLoadingSvg}
+                      alt="Grading with AI..."
+                      style={{ width: '18px', height: '18px', display: 'inline-block', verticalAlign: 'middle' }}
+                    />
                     <span>Grading with AI...</span>
                   </>
                 ) : (
