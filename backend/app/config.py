@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     UPLOAD_DIR: str = "./uploads"
 
+    # TrustGrade Feature Flag (Off by default for zero baseline regression)
+    TRUSTGRADE_ENABLED: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

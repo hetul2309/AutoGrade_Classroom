@@ -320,7 +320,10 @@ def _pair_score(
     full_b = "\n\n".join(src.strip() for _, src in cells_b if src.strip())
     text_ratio = SequenceMatcher(None, full_a, full_b).ratio()
 
-    cell_coverage_score = weighted_score / max_total
+    if total_weight > 0 and len(matched) == len(cells_a) and len(matched) == len(cells_b):
+        cell_coverage_score = weighted_score / total_weight
+    else:
+        cell_coverage_score = weighted_score / max_total
     overall = max(cell_coverage_score, text_ratio)
 
     return round(overall, 4), matched

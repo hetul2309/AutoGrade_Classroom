@@ -44,3 +44,11 @@ Thumbs.db
 
 # Local reference folders (do not commit)
 Lekhak_Reference/
+
+# Student runtime uploads
+backend/uploads/
+
+# Secrets and extra env files
+.env.*
+*serviceAccountKey*.json
+firebase-adminsdk*.json

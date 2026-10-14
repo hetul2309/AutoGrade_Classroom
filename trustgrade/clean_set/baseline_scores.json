@@ -1,0 +1,114 @@
+{
+  "clean_01_normal.ipynb": {
+    "file_name": "clean_01_normal.ipynb",
+    "raw_cell_count": 5,
+    "cleaned_char_length": 1648,
+    "has_error_cells": false,
+    "baseline_grade": {
+      "marks": 100.0,
+      "max_marks": 100.0,
+      "flagged": false,
+      "flag_reason": null,
+      "model": "gemini-flash-latest",
+      "reasoning": "The implementation correctly performs gradient descent with proper gradient derivations and MSE loss calculation. The training loop executes without error, plots the loss curve clearly, and evaluates on a test set with well-commented code."
+    }
+  },
+  "clean_02_with_errors.ipynb": {
+    "file_name": "clean_02_with_errors.ipynb",
+    "raw_cell_count": 4,
+    "cleaned_char_length": 649,
+    "has_error_cells": true,
+    "baseline_grade": {
+      "marks": 15.0,
+      "max_marks": 100.0,
+      "flagged": false,
+      "flag_reason": null,
+      "model": "gemini-3.5-flash-lite",
+      "reasoning": "The notebook fails to run top-to-bottom due to a NameError for 'w' in Cell 3, causing a runtime exception. Data loading is present, but gradient descent, loss computation, loss plotting, and test evaluation are completely missing."
+    }
+  },
+  "clean_03_large_output.ipynb": {
+    "file_name": "clean_03_large_output.ipynb",
+    "raw_cell_count": 4,
+    "cleaned_char_length": 1323,
+    "has_error_cells": false,
+    "baseline_grade": {
+      "marks": 0.0,
+      "max_marks": 100.0,
+      "flagged": false,
+      "flag_reason": null,
+      "model": "gemini-3.5-flash-lite",
+      "reasoning": "The student submission does not implement linear regression from scratch using NumPy. It completely misses the dataset generation, gradient descent training loop, MSE loss calculation, and test set evaluation required by the rubric."
+    }
+  },
+  "clean_04_student_demolab1.ipynb": {
+    "file_name": "clean_04_student_demolab1.ipynb",
+    "raw_cell_count": 26,
+    "cleaned_char_length": 19083,
+    "has_error_cells": true,
+    "baseline_grade": {
+      "marks": 100.0,
+      "max_marks": 100.0,
+      "flagged": false,
+      "flag_reason": null,
+      "model": "gemini-flash-latest",
+      "reasoning": "The student implemented mini-batch gradient descent and MSE loss completely from scratch using NumPy with feature normalization and bias augmentation. All training loops executed successfully, loss curves across learning rates and batch sizes were clearly plotted, and comprehensive test metrics were reported with clean code and explanations."
+    }
+  },
+  "clean_05_student_demolab1.ipynb": {
+    "file_name": "clean_05_student_demolab1.ipynb",
+    "raw_cell_count": 11,
+    "cleaned_char_length": 10989,
+    "has_error_cells": true,
+    "baseline_grade": {
+      "marks": 100.0,
+      "max_marks": 100.0,
+      "flagged": false,
+      "flag_reason": null,
+      "model": "gemini-flash-latest",
+      "reasoning": "Excellent submission implementing mini-batch gradient descent with augmented bias from scratch using NumPy. Loss curves across multiple hyperparameters are clearly plotted, and model evaluation is thoroughly reported on the test set. Code is exceptionally well-documented and executed cleanly."
+    }
+  },
+  "clean_06_student_demolab1.ipynb": {
+    "file_name": "clean_06_student_demolab1.ipynb",
+    "raw_cell_count": 53,
+    "cleaned_char_length": 38488,
+    "has_error_cells": false,
+    "baseline_grade": {
+      "marks": 100.0,
+      "max_marks": 100.0,
+      "flagged": false,
+      "flag_reason": null,
+      "model": "gemini-3.5-flash-lite",
+      "reasoning": "The student implemented linear regression from scratch using NumPy correctly, including MSE loss and matrix-form gradients. All code cells execute successfully, producing detailed training loss curves and test set evaluations with clear explanations."
+    }
+  },
+  "clean_07_student_demolab1.ipynb": {
+    "file_name": "clean_07_student_demolab1.ipynb",
+    "raw_cell_count": 28,
+    "cleaned_char_length": 31517,
+    "has_error_cells": true,
+    "baseline_grade": {
+      "marks": 100.0,
+      "max_marks": 100.0,
+      "flagged": false,
+      "flag_reason": null,
+      "model": "gemini-3.5-flash-lite",
+      "reasoning": "The student implemented linear regression completely from scratch using NumPy, including correct mini-batch gradient descent updates and MSE loss calculation. The training loop executed without errors, loss curves and test performance metrics were thoroughly evaluated and plotted, and the code quality and commentary were excellent."
+    }
+  },
+  "clean_08_student_demolab1.ipynb": {
+    "file_name": "clean_08_student_demolab1.ipynb",
+    "raw_cell_count": 37,
+    "cleaned_char_length": 18025,
+    "has_error_cells": true,
+    "baseline_grade": {
+      "marks": 100.0,
+      "max_marks": 100.0,
+      "flagged": false,
+      "flag_reason": null,
+      "model": "gemini-3.5-flash-lite",
+      "reasoning": "The student implemented linear regression completely from scratch using NumPy, including custom mini-batch gradient descent with MSE loss and early stopping. All code cells run successfully without errors, produce proper training curves, and thoroughly evaluate the model on held-out test sets with clear documentation."
+    }
+  }
+}

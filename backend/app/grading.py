@@ -189,7 +189,7 @@ def _build_user_prompt(
 
     if similarity_flag:
         parts.append(
-            "## ⚠️ PLAGIARISM / COPY CASE DETECTED (Pre-computed AST & Token Match)\n"
+            "## ⚠️ PLAGIARISM / COPY CASE DETECTED (Similarity Flag: Pre-computed AST & Token Match)\n"
             f"- Details: {similarity_flag.explanation}\n"
             f"- Similarity Score: {round(similarity_flag.overall_score * 100, 1)}%\n"
             "- Instruction: You MUST set flagged=true, copy the explanation to flag_reason, and explicitly state in your concise reasoning the matched student's ID and Email."
@@ -228,7 +228,7 @@ def grade_with_gemini(
     from google import genai
     from google.genai import types
 
-    key = api_key or settings.GEMINI_API_KEY
+    key = settings.GEMINI_API_KEY if api_key is None else api_key
     if not key or key.startswith("your-"):
         raise GradingAPIError(
             "GEMINI_API_KEY is not set. Get a free API key at https://aistudio.google.com and add it to .env"
