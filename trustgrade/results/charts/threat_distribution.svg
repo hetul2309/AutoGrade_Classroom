@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" width="100%" height="100%" style="background:#0f172a; font-family:system-ui, -apple-system, sans-serif;">
+  <text x="350" y="45" text-anchor="middle" fill="#f8fafc" font-size="19" font-weight="700">TrustGrade: Attack Suite Threat Taxonomy</text>
+  <text x="350" y="70" text-anchor="middle" fill="#94a3b8" font-size="13">40 Comprehensive Adversarial Test Notebooks (10 per Attack Vector)</text>
+
+  <!-- Left Column Legend Cards -->
+  <g transform="translate(60, 110)">
+    <!-- Group A -->
+    <rect x="0" y="0" width="220" height="50" rx="8" fill="#1e293b" stroke="#6366f1" stroke-width="1.5" />
+    <circle cx="20" cy="25" r="8" fill="#6366f1" />
+    <text x="36" y="22" fill="#f8fafc" font-size="13" font-weight="600">Group A: Prompt Injection</text>
+    <text x="36" y="38" fill="#94a3b8" font-size="11">10 Notebooks (25%)</text>
+
+    <!-- Group B -->
+    <rect x="0" y="65" width="220" height="50" rx="8" fill="#1e293b" stroke="#ec4899" stroke-width="1.5" />
+    <circle cx="20" cy="90" r="8" fill="#ec4899" />
+    <text x="36" y="87" fill="#f8fafc" font-size="13" font-weight="600">Group B: Disclosure Probes</text>
+    <text x="36" y="103" fill="#94a3b8" font-size="11">10 Notebooks (25%)</text>
+
+    <!-- Group C -->
+    <rect x="0" y="130" width="220" height="50" rx="8" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5" />
+    <circle cx="20" cy="155" r="8" fill="#f59e0b" />
+    <text x="36" y="152" fill="#f8fafc" font-size="13" font-weight="600">Group C: Agency Abuse</text>
+    <text x="36" y="168" fill="#94a3b8" font-size="11">10 Notebooks (25%)</text>
+
+    <!-- Group D -->
+    <rect x="0" y="195" width="220" height="50" rx="8" fill="#1e293b" stroke="#10b981" stroke-width="1.5" />
+    <circle cx="20" cy="220" r="8" fill="#10b981" />
+    <text x="36" y="217" fill="#f8fafc" font-size="13" font-weight="600">Group D: Rubric Tampering</text>
+    <text x="36" y="233" fill="#94a3b8" font-size="11">10 Notebooks (25%)</text>
+  </g>
+
+  <!-- Right Visual Donut Representation -->
+  <g transform="translate(500, 230)">
+    <!-- Ring arcs -->
+    <!-- Top-Right: Group A (6366f1) -->
+    <path d="M 0 -100 A 100 100 0 0 1 100 0 L 60 0 A 60 60 0 0 0 0 -60 Z" fill="#6366f1" />
+    <!-- Bottom-Right: Group B (ec4899) -->
+    <path d="M 100 0 A 100 100 0 0 1 0 100 L 0 60 A 60 60 0 0 0 60 0 Z" fill="#ec4899" />
+    <!-- Bottom-Left: Group C (f59e0b) -->
+    <path d="M 0 100 A 100 100 0 0 1 -100 0 L -60 0 A 60 60 0 0 0 0 60 Z" fill="#f59e0b" />
+    <!-- Top-Left: Group D (10b981) -->
+    <path d="M -100 0 A 100 100 0 0 1 0 -100 L 0 -60 A 60 60 0 0 0 -60 0 Z" fill="#10b981" />
+
+    <!-- Center text -->
+    <text x="0" y="-8" text-anchor="middle" fill="#f8fafc" font-size="24" font-weight="800">40</text>
+    <text x="0" y="14" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="600">TEST CASES</text>
+  </g>
+</svg>

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="100%" height="100%" style="background:#0f172a; font-family:system-ui, -apple-system, sans-serif;">
+  <!-- Title -->
+  <text x="400" y="40" text-anchor="middle" fill="#f8fafc" font-size="20" font-weight="700">TrustGrade: Attack Success Rate (ASR) Comparison</text>
+  <text x="400" y="65" text-anchor="middle" fill="#94a3b8" font-size="13">Baseline (Flag OFF) vs. TrustGrade Defended (Flag ON) across 40 Attack Notebooks</text>
+
+  <!-- Legend -->
+  <rect x="270" y="85" width="16" height="16" rx="4" fill="#ef4444" />
+  <text x="295" y="98" fill="#cbd5e1" font-size="13">Baseline (Unhardened)</text>
+  <rect x="470" y="85" width="16" height="16" rx="4" fill="#10b981" />
+  <text x="495" y="98" fill="#cbd5e1" font-size="13">TrustGrade Defended</text>
+
+  <!-- Grid Lines -->
+  <line x1="80" y1="140" x2="740" y2="140" stroke="#334155" stroke-dasharray="4" />
+  <text x="70" y="145" text-anchor="end" fill="#64748b" font-size="11">12%</text>
+
+  <line x1="80" y1="210" x2="740" y2="210" stroke="#334155" stroke-dasharray="4" />
+  <text x="70" y="215" text-anchor="end" fill="#64748b" font-size="11">8%</text>
+
+  <line x1="80" y1="280" x2="740" y2="280" stroke="#334155" stroke-dasharray="4" />
+  <text x="70" y="285" text-anchor="end" fill="#64748b" font-size="11">4%</text>
+
+  <line x1="80" y1="350" x2="740" y2="350" stroke="#475569" stroke-width="2" />
+  <text x="70" y="355" text-anchor="end" fill="#64748b" font-size="11">0%</text>
+
+  <!-- Category 1: Group A (Injection) -->
+  <!-- Base: 0%, Def: 0% -->
+  <rect x="110" y="348" width="35" height="2" fill="#ef4444" rx="1" />
+  <text x="127" y="340" text-anchor="middle" fill="#ef4444" font-size="12" font-weight="700">0%</text>
+  <rect x="150" y="348" width="35" height="2" fill="#10b981" rx="1" />
+  <text x="167" y="340" text-anchor="middle" fill="#10b981" font-size="12" font-weight="700">0%</text>
+  <text x="147" y="375" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Group A</text>
+  <text x="147" y="392" text-anchor="middle" fill="#64748b" font-size="10">Injection</text>
+
+  <!-- Category 2: Group B (Disclosure) -->
+  <!-- Base: 0%, Def: 0% -->
+  <rect x="240" y="348" width="35" height="2" fill="#ef4444" rx="1" />
+  <text x="257" y="340" text-anchor="middle" fill="#ef4444" font-size="12" font-weight="700">0%</text>
+  <rect x="280" y="348" width="35" height="2" fill="#10b981" rx="1" />
+  <text x="297" y="340" text-anchor="middle" fill="#10b981" font-size="12" font-weight="700">0%</text>
+  <text x="277" y="375" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Group B</text>
+  <text x="277" y="392" text-anchor="middle" fill="#64748b" font-size="10">Disclosure</text>
+
+  <!-- Category 3: Group C (Agency Abuse) -->
+  <!-- Base: 10% (height = 175px), Def: 0% -->
+  <rect x="370" y="175" width="35" height="175" fill="#ef4444" rx="3" />
+  <text x="387" y="165" text-anchor="middle" fill="#f87171" font-size="12" font-weight="700">10.0%</text>
+  <rect x="410" y="348" width="35" height="2" fill="#10b981" rx="1" />
+  <text x="427" y="340" text-anchor="middle" fill="#10b981" font-size="12" font-weight="700">0%</text>
+  <text x="407" y="375" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Group C</text>
+  <text x="407" y="392" text-anchor="middle" fill="#64748b" font-size="10">Agency Abuse</text>
+
+  <!-- Category 4: Group D (Tampering) -->
+  <!-- Base: 0%, Def: 0% -->
+  <rect x="500" y="348" width="35" height="2" fill="#ef4444" rx="1" />
+  <text x="517" y="340" text-anchor="middle" fill="#ef4444" font-size="12" font-weight="700">0%</text>
+  <rect x="540" y="348" width="35" height="2" fill="#10b981" rx="1" />
+  <text x="557" y="340" text-anchor="middle" fill="#10b981" font-size="12" font-weight="700">0%</text>
+  <text x="537" y="375" text-anchor="middle" fill="#cbd5e1" font-size="12" font-weight="600">Group D</text>
+  <text x="537" y="392" text-anchor="middle" fill="#64748b" font-size="10">Tampering</text>
+
+  <!-- Category 5: OVERALL -->
+  <!-- Base: 2.5% (height = 44px), Def: 0% -->
+  <rect x="630" y="306" width="35" height="44" fill="#f87171" rx="3" />
+  <text x="647" y="298" text-anchor="middle" fill="#f87171" font-size="12" font-weight="700">2.5%</text>
+  <rect x="670" y="348" width="35" height="2" fill="#10b981" rx="1" />
+  <text x="687" y="340" text-anchor="middle" fill="#10b981" font-size="12" font-weight="700">0.0%</text>
+  <text x="667" y="375" text-anchor="middle" fill="#f1f5f9" font-size="12" font-weight="700">OVERALL</text>
+  <text x="667" y="392" text-anchor="middle" fill="#10b981" font-size="10" font-weight="600">🛡️ 100% Defended</text>
+</svg>

@@ -265,10 +265,29 @@ Evaluated against the full 40-attack suite spanning direct prompt injection, can
 
 - **Clean Set Regression:** Evaluated across 8 clean submissions with an average stability score of **0.988 / 1.000**, with 100% preservation of academic marks and actionable counterfactual feedback provided.
 
+### TrustGrade CLI Demonstration & Report Commands
+
+```powershell
+# 1. Run the interactive 5-scenario defense demo
+uv run python backend/scripts/trustgrade/demo_blocked_attacks.py
+
+# 2. Run the full unit and regression test suite
+uv run pytest backend/tests/trustgrade/ backend/tests/test_grading.py backend/tests/test_similarity.py backend/tests/test_notebook_processing.py backend/tests/test_pipeline.py -v
+
+# 3. Generate visual vector SVG charts (ASR, Threat Taxonomy, Consistency)
+uv run python backend/scripts/trustgrade/generate_visual_charts.py
+
+# 4. View detailed reports
+# - trustgrade/docs/project_report.md (Comprehensive academic report)
+# - trustgrade/results/comparison_report.md (Before vs After comparison)
+# - trustgrade/results/consistency_report.md (Stability & variance report)
+```
+
 ---
 
 ## Maintenance & Documentation Policy
 
 > **Important Note for Developers and AI Agents:**
 > Whenever significant architectural changes, new endpoints, database migrations, or major frontend features are introduced, **this `README.md` must be updated** in the same change to maintain accurate, up-to-date documentation.
+
 
