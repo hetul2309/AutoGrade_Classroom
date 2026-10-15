@@ -217,10 +217,19 @@ def _build_user_prompt(
             logger.warning("TrustGrade provenance wrapping error (failing safe): %s", exc)
 
     parts.append("## Student Notebook Submission\n" + clean_content)
-    parts.append(
+
+    grading_action = (
         "## Grading Action\n"
         "Evaluate the submission and call submit_grade with marks, max_marks, concise reasoning (2-3 sentences max), and flag status."
     )
+    if is_trustgrade_enabled():
+        try:
+            from app.trustgrade.explain import build_explainability_directives
+            grading_action += build_explainability_directives()
+        except Exception as exc:
+            logger.warning("TrustGrade explainability directives error (failing safe): %s", exc)
+
+    parts.append(grading_action)
 
     return "\n\n---\n\n".join(parts)
 
@@ -547,6 +556,14 @@ def _parse_grade_result(
             )
             if audit_notices:
                 logger.info("TrustGrade validation notices for %s: %s", model, "; ".join(audit_notices))
+
+            # 3. Explainability assurance: provide counterfactual hint for non-flagged deductions
+            from app.trustgrade.explain import extract_counterfactual_hint
+            if marks < max_marks and not flagged:
+                lower_reasoning = reasoning.lower()
+                if "what would raise this grade" not in lower_reasoning and "to improve" not in lower_reasoning:
+                    hint = extract_counterfactual_hint(reasoning)
+                    reasoning += f"\n\n💡 What would raise this grade: {hint}"
         except Exception as exc:
             logger.warning("TrustGrade output validator error (failing safe): %s", exc)
 

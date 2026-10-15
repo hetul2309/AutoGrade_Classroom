@@ -11,6 +11,9 @@ from app.config import get_settings
 
 def is_trustgrade_enabled() -> bool:
     """Returns True if the TrustGrade feature flag is active."""
+    env_val = os.environ.get("TRUSTGRADE_ENABLED")
+    if env_val is not None:
+        return env_val.strip().lower() in ("true", "1", "yes", "on")
     try:
         settings = get_settings()
         return bool(getattr(settings, "TRUSTGRADE_ENABLED", False))

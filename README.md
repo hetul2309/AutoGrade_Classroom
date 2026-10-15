@@ -224,7 +224,32 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
+## TrustGrade: Trustworthy AI Security & Explainability Layer
+
+AutoGrade Classroom includes **TrustGrade**, an enterprise-grade security and explainability framework designed to harden the LLM grading pipeline against adversarial manipulation while providing actionable, transparent feedback to students and instructors.
+
+TrustGrade is controlled by the `TRUSTGRADE_ENABLED` feature flag (default `false` to ensure 100% backward compatibility and baseline parity).
+
+### Architecture & Defenses
+
+1. **Security & Boundary Isolation:**
+   - **Sanitizer & Provenance Wrapping:** Strips null bytes, zero-width spaces, and ANSI escape sequences; isolates untrusted notebook content inside `<student_submission_untrusted>` boundaries.
+   - **Adversarial Injection Detector:** High-performance heuristic regex scanner detecting direct overrides, role hijacking, syllabus forgery, and peer-framing attacks.
+   - **Hardened Prompt Guard & Dynamic Canaries:** Implements strict negative constraints and inserts an ephemeral session canary (`TG_CANARY_...`) never exposed to client outputs.
+   - **Leak Redaction Engine:** Intercepts and scrubs leaked canary tokens, API keys (`AIzaSy...`), and database connection strings before output persistence.
+   - **Output Validator & Mark Clamping:** Clamps numeric grades strictly within `[0.0, max_marks]`, prevents negative marks or NaN values, and neutralizes fraudulent peer-flagging attempts.
+   - **Rubric Integrity Hashing:** SHA-256 cryptographic fingerprinting verifying that rubric instructions and task specifications remain un-tampered throughout batch grading.
+
+2. **Explainability & Fair Assessment (Stage 4):**
+   - **Per-Criterion Reasoning:** Guides the grading model to provide structured, criterion-by-criterion point allocations.
+   - **Actionable Counterfactual Feedback:** Automatically appends concrete improvement advice (`💡 What would raise this grade: ...`) identifying what code fixes, edge case handling, or tests would increase marks.
+   - **Sycophancy & Emotional Manipulation Defense:** Detects and ignores student sob stories, grade desperation pleas (e.g. scholarship/visa threats), flattery, or effort inflation.
+   - **Consistency & Variance Measurement:** Statistical variance, standard deviation, and stability scoring across repeated evaluation trials (`run_consistency_test.py`).
+
+---
+
 ## Maintenance & Documentation Policy
 
 > **Important Note for Developers and AI Agents:**
 > Whenever significant architectural changes, new endpoints, database migrations, or major frontend features are introduced, **this `README.md` must be updated** in the same change to maintain accurate, up-to-date documentation.
+

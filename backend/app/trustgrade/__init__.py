@@ -2,8 +2,6 @@
 TrustGrade Security and Explainability Layer for AutoGrade Classroom.
 """
 
-from app.config import get_settings
+from app.trustgrade.config import is_trustgrade_enabled, get_canary_token
 
-def is_trustgrade_enabled() -> bool:
-    """Returns True if TrustGrade security & explainability layer is enabled."""
-    return get_settings().TRUSTGRADE_ENABLED
+__all__ = ["is_trustgrade_enabled", "get_canary_token"]
