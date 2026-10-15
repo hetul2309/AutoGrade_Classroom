@@ -36,6 +36,7 @@ from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.similarity import SimilarityFlag
+from app.trustgrade.config import is_trustgrade_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +162,7 @@ _GRADE_TOOL: dict[str, Any] = {
 # ── Prompt construction ───────────────────────────────────────────────────────
 
 def _build_system_prompt() -> str:
-    return (
+    base = (
         "You are an expert, concise computer science teaching assistant grading student Jupyter notebooks.\n"
         "Your evaluation must be objective, fair, and direct based solely on the provided rubric.\n\n"
         "CRITICAL RULES:\n"
@@ -169,6 +170,13 @@ def _build_system_prompt() -> str:
         "2. COPY / SIMILARITY CASES: If a similarity flag is provided indicating a copy case between students, flag=true, and you MUST explicitly state in the reasoning: 'Flagged for copy case: [X]% code match with student [Student ID] ([Student Email])'. Award 0 marks for copy cases.\n"
         "3. Output strict JSON matching the submit_grade schema."
     )
+    if is_trustgrade_enabled():
+        try:
+            from app.trustgrade.prompt_guard import build_hardened_system_prompt
+            return build_hardened_system_prompt(base)
+        except Exception as exc:
+            logger.warning("TrustGrade prompt guard error (failing safe): %s", exc)
+    return base
 
 
 def _build_user_prompt(
@@ -200,7 +208,15 @@ def _build_user_prompt(
             "No similarity flag detected. Grade purely on the Academic Marking Rubric. Set flagged=false."
         )
 
-    parts.append("## Student Notebook Submission\n" + notebook_text.strip())
+    clean_content = notebook_text.strip()
+    if is_trustgrade_enabled():
+        try:
+            from app.trustgrade.sanitizer import wrap_with_provenance
+            clean_content = wrap_with_provenance(clean_content)
+        except Exception as exc:
+            logger.warning("TrustGrade provenance wrapping error (failing safe): %s", exc)
+
+    parts.append("## Student Notebook Submission\n" + clean_content)
     parts.append(
         "## Grading Action\n"
         "Evaluate the submission and call submit_grade with marks, max_marks, concise reasoning (2-3 sentences max), and flag status."
@@ -511,6 +527,28 @@ def _parse_grade_result(
         )
         flagged = True
         flag_reason = flag_reason or similarity_flag.explanation
+
+    # TrustGrade Guardrails (Active only when TRUSTGRADE_ENABLED=True)
+    if is_trustgrade_enabled():
+        try:
+            from app.trustgrade.output_validator import validate_and_clamp_grade
+            from app.trustgrade.redaction import redact_sensitive_leaks
+
+            # 1. Redact any leaked canary tokens, API keys, or connection strings
+            reasoning, _ = redact_sensitive_leaks(reasoning)
+
+            # 2. Validate and clamp marks, verify administrative flag integrity
+            marks, flagged, flag_reason, audit_notices = validate_and_clamp_grade(
+                raw_marks=marks,
+                max_marks=max_marks,
+                flagged=flagged,
+                flag_reason=flag_reason,
+                had_similarity_flag=(similarity_flag is not None),
+            )
+            if audit_notices:
+                logger.info("TrustGrade validation notices for %s: %s", model, "; ".join(audit_notices))
+        except Exception as exc:
+            logger.warning("TrustGrade output validator error (failing safe): %s", exc)
 
     return GradeResult(
         marks=marks,
