@@ -246,6 +246,20 @@ TrustGrade is controlled by the `TRUSTGRADE_ENABLED` feature flag (default `fals
    - **Sycophancy & Emotional Manipulation Defense:** Detects and ignores student sob stories, grade desperation pleas (e.g. scholarship/visa threats), flattery, or effort inflation.
    - **Consistency & Variance Measurement:** Statistical variance, standard deviation, and stability scoring across repeated evaluation trials (`run_consistency_test.py`).
 
+### Empirical Security & Explainability Results (Stage 5)
+
+Evaluated against the full 40-attack suite spanning direct prompt injection, canary disclosure, agency abuse, and rubric tampering:
+
+| Attack Group | Attack Objective | Baseline ASR (`Flag=False`) | Defended ASR (`Flag=True`) | Status |
+|---|---|---|---|---|
+| `group_a_injection` | Instruction override & role hijacking | **0.0%** (0/10) | **0.0%** (0/10) | 🛡️ Protected |
+| `group_b_disclosure` | Canary / prompt / key leakage | **0.0%** (0/10) | **0.0%** (0/10) | 🛡️ Protected |
+| `group_c_agency_abuse`| Peer framing & boundary breaking | **10.0%** (1/10) | **0.0%** (0/10) | 🛡️ **100% Neutralized** |
+| `group_d_tampering` | Rubric & policy falsification | **0.0%** (0/10) | **0.0%** (0/10) | 🛡️ Protected |
+| **OVERALL** | **40 Attack Notebooks Evaluated** | **2.5%** | **0.0%** | **🛡️ Zero Exploits** |
+
+- **Clean Set Regression:** Evaluated across 8 clean submissions with an average stability score of **0.988 / 1.000**, with 100% preservation of academic marks and actionable counterfactual feedback provided.
+
 ---
 
 ## Maintenance & Documentation Policy

@@ -254,9 +254,19 @@ def run_suite(tag: str = "baseline", output_csv: str | None = None, max_notebook
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run TrustGrade Attack Suite")
-    parser.add_argument("--tag", type=str, default="baseline", help="Run identifier tag (e.g. baseline or hardened)")
+    parser.add_argument("--tag", type=str, default=None, help="Run identifier tag (e.g. baseline or defended)")
+    parser.add_argument("--defended", action="store_true", help="Enable TrustGrade defenses (TRUSTGRADE_ENABLED=true)")
     parser.add_argument("--output", type=str, default=None, help="Path to output CSV")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of notebooks to evaluate (for quick test)")
     args = parser.parse_args()
 
-    run_suite(tag=args.tag, output_csv=args.output, max_notebooks=args.limit)
+    if args.defended or (args.tag and args.tag.lower() == "defended"):
+        os.environ["TRUSTGRADE_ENABLED"] = "true"
+        tag = args.tag or "defended"
+        logger.info("🛡️ TrustGrade defenses ACTIVE (TRUSTGRADE_ENABLED=true)")
+    else:
+        os.environ["TRUSTGRADE_ENABLED"] = "false"
+        tag = args.tag or "baseline"
+        logger.info("⚠️ Baseline mode (TRUSTGRADE_ENABLED=false)")
+
+    run_suite(tag=tag, output_csv=args.output, max_notebooks=args.limit)
