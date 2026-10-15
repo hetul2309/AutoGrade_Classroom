@@ -38,6 +38,7 @@ import EditGradeModal from '../components/EditGradeModal';
 import SimilarityFlagModal from '../components/SimilarityFlagModal';
 import Toast from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { TrustBadge, ReasoningView, FlagDetailPanel } from '../components/trustgrade';
 
 import lavenderLoadingSvg from '../assets/lavender_loading.svg';
 import pinkLoadingSvg from '../assets/pink_loading.svg';
@@ -121,6 +122,7 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
   const [editingAssignment, setEditingAssignment] = useState(null);
   const [editingGrade, setEditingGrade] = useState(null);
   const [inspectingFlag, setInspectingFlag] = useState(null);
+  const [inspectingTrustGradeSub, setInspectingTrustGradeSub] = useState(null);
   const [expandedRubric, setExpandedRubric] = useState({});
   const [expandedReasoning, setExpandedReasoning] = useState({});
   const [copiedCode, setCopiedCode] = useState(false);
@@ -1904,30 +1906,13 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
                         </td>
 
                         <td style={{ padding: '14px 18px', maxWidth: '380px' }}>
-                          {item.reasoning_text ? (
-                            <div>
-                              {/* Copy case alert badge if flagged */}
-                              {item.flagged && (
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', padding: '3px 8px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: '700', marginBottom: '6px' }}>
-                                  <AlertTriangle size={12} />
-                                  <span>Copy Case Detected</span>
-                                </div>
-                              )}
-
-                              <div style={{ fontSize: '0.84rem', color: isNoSub ? '#f87171' : item.flagged ? '#fca5a5' : 'var(--text-bright)', lineHeight: '1.45' }}>
-                                {item.reasoning_text}
-                              </div>
-
-                              {/* Additional Flag Reason Inspector if available */}
-                              {item.flag_reason && item.flag_reason !== item.reasoning_text && (
-                                <div style={{ marginTop: '6px', fontSize: '0.78rem', color: 'var(--text-dim)', background: 'rgba(0,0,0,0.25)', padding: '6px 10px', borderRadius: '6px' }}>
-                                  <strong>Details:</strong> {item.flag_reason}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Awaiting grading</span>
-                          )}
+                          <ReasoningView
+                            reasoning={item.reasoning_text}
+                            flagged={item.flagged}
+                            flagReason={item.flag_reason}
+                            isNoSub={isNoSub}
+                            onInspectSecurity={() => setInspectingTrustGradeSub(item)}
+                          />
                         </td>
 
                         {/* Action Buttons: Recheck & Edit */}
@@ -2800,6 +2785,16 @@ export default function ClassDetailPage({ classId, user, onBack, theme = 'light'
             </div>
           </div>
         </div>
+      )}
+
+      {/* TrustGrade Security & Assessment Inspector Modal */}
+      {inspectingTrustGradeSub && (
+        <FlagDetailPanel
+          submission={inspectingTrustGradeSub}
+          assignment={currentAssignment}
+          onClose={() => setInspectingTrustGradeSub(null)}
+          theme={theme}
+        />
       )}
     </div>
   );

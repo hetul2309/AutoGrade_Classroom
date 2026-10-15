@@ -6,6 +6,7 @@ import {
 import { getAssignmentsApi, getMyGradesApi, uploadSubmissionApi } from '../api';
 import Toast from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { ReasoningView } from '../components/trustgrade';
 
 export default function StudentPortal({ currentUser }) {
   const [activeTab, setActiveTab] = useState('assignments'); // 'assignments' | 'grades'
@@ -444,13 +445,11 @@ export default function StudentPortal({ currentUser }) {
                       {/* AI Reasoning & Detailed Feedback */}
                       {gradeItem.reasoning_text && (
                         <div style={{ padding: '18px 20px', background: 'rgba(15, 23, 42, 0.65)', border: '1px solid var(--border-subtle)', borderRadius: '12px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: '700', color: 'var(--accent-cyan)', marginBottom: '8px' }}>
-                            <Sparkles size={16} />
-                            <span>Evaluation Feedback & Rubric Reasoning</span>
-                          </div>
-                          <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: '1.6' }}>
-                            {gradeItem.reasoning_text}
-                          </p>
+                          <ReasoningView
+                            reasoning={gradeItem.reasoning_text}
+                            flagged={gradeItem.flagged}
+                            flagReason={gradeItem.flag_reason}
+                          />
                         </div>
                       )}
                     </div>

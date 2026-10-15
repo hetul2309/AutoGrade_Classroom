@@ -246,6 +246,11 @@ TrustGrade is controlled by the `TRUSTGRADE_ENABLED` feature flag (default `fals
    - **Sycophancy & Emotional Manipulation Defense:** Detects and ignores student sob stories, grade desperation pleas (e.g. scholarship/visa threats), flattery, or effort inflation.
    - **Consistency & Variance Measurement:** Statistical variance, standard deviation, and stability scoring across repeated evaluation trials (`run_consistency_test.py`).
 
+3. **TrustGrade Frontend UI (Stage 6):**
+   - **`TrustBadge`:** Visual indicator on student evaluation rows showing `TrustGrade Protected` or `Similarity Flagged`.
+   - **`ReasoningView`:** Rich rendering of rubric evaluations with dedicated highlight cards for actionable counterfactual hints (`💡 What would raise this grade:`).
+   - **`FlagDetailPanel`:** Deep security and integrity inspector modal allowing instructors to audit plagiarism similarity details, boundary provenance enforcement, canary protection status, and sycophancy filtering.
+
 ### Empirical Security & Explainability Results (Stage 5)
 
 Evaluated against the full 40-attack suite spanning direct prompt injection, canary disclosure, agency abuse, and rubric tampering:
